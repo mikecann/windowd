@@ -2,11 +2,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import type { Readable } from 'node:stream';
 import { select } from '@inquirer/prompts';
-import { createServer as createViteServer, type ViteDevServer } from 'vite';
-import { Webview, getLibraryPath } from 'webview-nodejs';
-import koffi from 'koffi';
-import { Worker as NodeWorker } from 'node:worker_threads';
+import { Webview } from 'webview-nodejs';
 
 const VITE_CONFIGS = [
   'vite.config.js',
@@ -25,7 +26,9 @@ interface Args {
 }
 
 const args = parseArgs();
-const pkgJson = JSON.parse(readFileSync(join(import.meta.dir, '../package.json'), 'utf-8'));
+const binDir = fileURLToPath(new URL('.', import.meta.url));
+const pkgJson = JSON.parse(readFileSync(join(binDir, '../package.json'), 'utf-8'));
+type ViteProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 if (args.version) {
   console.log(`instantly-native v${pkgJson.version}`);
@@ -66,8 +69,8 @@ async function main() {
     return;
   }
 
-  const server = await startVite(cwd);
-  const port   = server.config.server.port ?? 5173;
+  const port = await resolveDevPort(5173);
+  const vite = await startVite(cwd, port);
   const url    = `http://127.0.0.1:${port}`;
 
   console.log(`  instantly-native  ${url}`);
@@ -78,32 +81,38 @@ async function main() {
     width:   args.width,
     height:  args.height,
     debug:   args.debug,
-    rootDir: cwd,
   });
 
-  await server.close();
+  stopVite(vite);
   process.exit(0);
 }
 
 // ─── vite ────────────────────────────────────────────────────────────────────
 
-async function startVite(cwd: string): Promise<ViteDevServer> {
+async function startVite(cwd: string, port: number): Promise<ViteProcess> {
   process.stdout.write('  starting vite...');
-
-  const server = await createViteServer({
-    root:     cwd,
-    logLevel: 'warn',
-    server:   { host: '127.0.0.1' },
-  });
-
-  await server.listen();
+  const vite = spawn(
+    'bun',
+    ['x', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    { cwd, stdio: ['ignore', 'pipe', 'pipe'] }
+  );
+  vite.stdout.on('data', () => { /* keep pipe drained */ });
+  vite.stderr.on('data', () => { /* keep pipe drained */ });
 
   process.stdout.write('  waiting for vite...');
-  const port = server.config.server.port ?? 5173;
   await waitForServer(`http://127.0.0.1:${port}`);
   process.stdout.write('\r  \r');
 
-  return server;
+  return vite;
+}
+
+function stopVite(vite: ViteProcess) {
+  if (vite.killed) return;
+  try {
+    vite.kill('SIGTERM');
+  } catch {
+    // Process may have already exited.
+  }
 }
 
 // ─── webview ─────────────────────────────────────────────────────────────────
@@ -114,45 +123,16 @@ interface WindowOptions {
   width:  number;
   height: number;
   debug:  boolean;
-  rootDir: string;
 }
 
-async function openWindow({ url, title, width, height, debug, rootDir }: WindowOptions) {
-  const html = await fetchViteHtml(url);
-  const port = parseInt(new URL(url).port, 10);
-
+async function openWindow({ url, title, width, height, debug }: WindowOptions) {
   const wv = new Webview(debug);
   wv.title(title);
   wv.size(width, height);
   wv.bind('__native', () => ({ platform: process.platform, node: process.version }));
-  wv.html(html);
-
-  // wv.show() blocks the JS event loop entirely, so we use a node:worker_threads
-  // Worker which runs on a real OS thread in the same address space.
-  // The worker watches Vite's HMR WebSocket and calls webview_set_html() via koffi.
-  const handleAddr = (koffi.address(wv.unsafeHandle) as bigint).toString();
-  const worker = new NodeWorker(
-    new URL('../src/reload-worker.ts', import.meta.url),
-    { workerData: { handleAddr, port, libPath: getLibraryPath(), rootDir } },
-  );
-  worker.on('message', (msg) => {
-    if (msg.type === 'connected') console.log('  [hmr] connected to Vite');
-    if (msg.type === 'reloaded')  console.log('  [hmr] reloaded');
-    if (msg.type === 'error')     console.error('  [hmr] error:', msg.message);
-  });
-  worker.on('error', (err) => console.error('  [hmr] worker error:', err.message));
+  wv.navigate(url);
 
   wv.show(); // blocks until window is closed
-
-  worker.terminate();
-}
-
-async function fetchViteHtml(url: string): Promise<string> {
-  const res = await fetch(url);
-  const raw = await res.text();
-
-  // Inject base href so relative asset paths resolve against the Vite server
-  return raw.replace('<head>', `<head>\n  <base href="${url}">`);
 }
 
 // ─── no-project prompt ───────────────────────────────────────────────────────
@@ -193,14 +173,14 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
   spawnSync('bun', ['install'], { cwd, stdio: 'inherit' });
 
   // Now run with the freshly scaffolded project
-  const server = await startVite(cwd);
-  const port   = server.config.server.port ?? 5173;
+  const port = await resolveDevPort(5173);
+  const vite = await startVite(cwd, port);
   const url    = `http://127.0.0.1:${port}`;
 
   console.log(`  instantly-native  ${url}`);
-  openWindow({ url, title: args.title ?? basename(cwd), width: args.width, height: args.height, debug: args.debug, rootDir: cwd });
+  await openWindow({ url, title: args.title ?? basename(cwd), width: args.width, height: args.height, debug: args.debug });
 
-  await server.close();
+  stopVite(vite);
   process.exit(0);
 }
 
@@ -230,6 +210,47 @@ function waitForServer(url: string, maxAttempts = 40): Promise<void> {
     }
 
     attempt();
+  });
+}
+
+async function resolveDevPort(preferredPort: number): Promise<number> {
+  if (await isPortAvailable(preferredPort)) return preferredPort;
+
+  const fallbackPort = await getEphemeralPort();
+  console.log(`  port ${preferredPort} is in use, using ${fallbackPort}`);
+  return fallbackPort;
+}
+
+function isPortAvailable(port: number, host = '127.0.0.1'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createNetServer();
+
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+
+    server.listen(port, host);
+  });
+}
+
+function getEphemeralPort(host = '127.0.0.1'): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createNetServer();
+
+    server.once('error', reject);
+    server.once('listening', () => {
+      const addr = server.address();
+      if (!addr || typeof addr === 'string') {
+        server.close(() => reject(new Error('Could not determine a free port')));
+        return;
+      }
+
+      const port = addr.port;
+      server.close(() => resolve(port));
+    });
+
+    server.listen(0, host);
   });
 }
 
