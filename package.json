@@ -1,0 +1,34 @@
+{
+  "name": "instantly-native",
+  "version": "0.1.0",
+  "description": "Wrap any Vite project in a native OS WebView - zero config, instant HMR",
+  "keywords": ["vite", "webview", "desktop", "native", "electron-alternative"],
+  "license": "MIT",
+  "bin": {
+    "instantly-native": "./bin/cli.ts"
+  },
+  "files": [
+    "bin"
+  ],
+  "scripts": {
+    "test-app": "cd test-app && bun run ../bin/cli.ts --debug",
+    "test-app:prod": "cd test-app && bun run ../bin/cli.ts",
+    "test:html": "node test-webview.cjs html",
+    "test:data": "node test-webview.cjs data",
+    "test:external": "node test-webview.cjs external",
+    "test:local": "node test-webview.cjs local"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.3.0",
+    "vite": "^6.0.0",
+    "webview-nodejs": "^0.2.4",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/ws": "^8.18.1"
+  }
+}

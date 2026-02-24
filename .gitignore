@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.instantly-native/
+
+# lockfiles - keep bun.lock, ignore npm's
+package-lock.json
+
+# debug / scratch files
+*.log
+app.log
+worker.log
+screenshot*.png
+screenshot*.ps1
+test-webview.cjs
