@@ -1,0 +1,23 @@
+---
+description: Release process for windowd
+alwaysApply: true
+---
+
+# Releasing windowd
+
+## Version bump + commit + tag
+
+1. Bump `version` in `package.json`
+2. Commit: `git add bin/cli.ts package.json ... && git commit -m "Release vX.Y.Z."`
+3. Tag: `git tag vX.Y.Z`
+4. Push: `git push origin main --tags`
+
+## npm publish
+
+Publishing is handled automatically by the **npm Trusted Publisher** flow - pushing the tag triggers it via CI. Do NOT run `npm publish` manually.
+
+## Versioning guide
+
+- Patch (0.x.Y): bug fixes only
+- Minor (0.X.0): new features or meaningful UX improvements
+- The project is pre-1.0 so minor bumps are fine for anything non-trivial
