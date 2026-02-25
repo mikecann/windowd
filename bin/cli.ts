@@ -839,7 +839,9 @@ function buildNodeMainJs(closeSignalUrl: string): string {
 
 async function ensureNwBinary(): Promise<string> {
   const { findpath } = await import('nw');
-  const binPath = await findpath('nwjs', { flavor: 'sdk' });
+  // No explicit flavor - parse.js auto-detects from the installed nw package.json version.
+  // This avoids the mismatch when npm resolves "^0.108.0-sdk" to the non-sdk stable release.
+  const binPath = await findpath('nwjs');
   if (existsSync(binPath)) return binPath;
 
   // Binary missing - re-run nw's own postinstall to download it.
