@@ -10,12 +10,6 @@
       "node",
       "vite/client",
       "nw.js"
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "windowd": [
-        ".windowd/types"
-      ]
-    }
+    ]
   }
 }

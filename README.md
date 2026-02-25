@@ -50,7 +50,7 @@ npx windowd --init
 
 In this repo, demo apps live under `test-apps/`:
 
-- `test-apps/basics` shows wrapper imports and NW API usage
+- `test-apps/basics` shows typed `globalThis.nw` usage
 - `test-apps/config-demo` shows `windowd-config.ts` overrides
 
 ## Optional config

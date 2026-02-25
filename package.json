@@ -1,6 +1,6 @@
 {
   "name": "windowd",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Wrap any Vite project in an NW.js shell with full renderer Node.js access",
   "keywords": [
     "vite",
@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.3.0",
+    "@types/nw.js": "^0.92.0",
     "nw": "^0.108.0-sdk",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -42,7 +43,6 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
-    "@types/nw.js": "^0.92.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",

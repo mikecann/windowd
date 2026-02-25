@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
@@ -105,8 +105,6 @@ async function main() {
 
   ensureTsConfig(cwd);
   ensureNwTypes(cwd);
-  ensureWindowThisModuleTypes(cwd);
-  ensureWindowThisTsConfigAliases(cwd);
 
   const port = await resolveDevPort(5173);
   const viteConfig = createAugmentedViteConfig(cwd);
@@ -246,8 +244,6 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
 
   ensureTsConfig(cwd);
   ensureNwTypes(cwd);
-  ensureWindowThisModuleTypes(cwd);
-  ensureWindowThisTsConfigAliases(cwd);
 
   // Now run with the freshly scaffolded project
   const port = await resolveDevPort(5173);
@@ -401,26 +397,6 @@ export default mod;
   };
 }
 
-function windowThisRuntimeModule() {
-  const runtimeId = '\\0windowd-runtime';
-  return {
-    name: 'windowd-runtime-module',
-    enforce: 'pre',
-    resolveId(id) {
-      if (id === 'windowd') return runtimeId;
-      return null;
-    },
-    load(id) {
-      if (id !== runtimeId) return null;
-      return \`
-const nw = globalThis.nw;
-export { nw };
-export default { nw };
-\`;
-    },
-  };
-}
-
 const projectDir = ${JSON.stringify(cwd)};
 const defaultFsAllow = [projectDir, path.resolve(projectDir, "..")];
 const userConfigUrl = ${JSON.stringify(userConfigUrl)};
@@ -436,8 +412,8 @@ if (userConfigUrl) {
 }
 
 const plugins = Array.isArray(userConfig.plugins)
-  ? [windowThisNodeBuiltins(), windowThisRuntimeModule(), ...userConfig.plugins]
-  : [windowThisNodeBuiltins(), windowThisRuntimeModule()];
+  ? [windowThisNodeBuiltins(), ...userConfig.plugins]
+  : [windowThisNodeBuiltins()];
 
 const userServer = userConfig.server ?? {};
 const userFs = userServer.fs ?? {};
@@ -533,8 +509,6 @@ function ensureTsConfig(cwd: string) {
 
 function runInit(cwd: string) {
   ensureNwTypes(cwd);
-  ensureWindowThisModuleTypes(cwd);
-  ensureWindowThisTsConfigAliases(cwd);
 
   const tsconfigPath = join(cwd, 'tsconfig.json');
   if (!existsSync(tsconfigPath)) {
@@ -576,64 +550,6 @@ function ensureNwTypes(cwd: string) {
 
   if (result.status !== 0) {
     console.warn('  could not install @types/nw.js automatically, continuing anyway');
-  }
-}
-
-function ensureWindowThisModuleTypes(cwd: string) {
-  const hiddenTypesDir = join(cwd, '.windowd');
-  const declarationsPath = join(hiddenTypesDir, 'types.d.ts');
-  if (existsSync(declarationsPath)) return;
-
-  mkdirSync(hiddenTypesDir, { recursive: true });
-
-  const content = `declare module "windowd" {
-  export interface WindowApi {
-    minimize(): void;
-    maximize(): void;
-    restore(): void;
-    showDevTools(): unknown;
-    setAlwaysOnTop(flag: boolean): void;
-    frame?: boolean;
-  }
-  export interface NwApi {
-    Window: {
-      get(): WindowApi;
-    };
-  }
-  export const nw: NwApi;
-  const _default: { nw: NwApi };
-  export default _default;
-}
-`;
-  writeFileSync(declarationsPath, content, 'utf-8');
-  console.log('  created .windowd/types.d.ts for windowd imports');
-}
-
-function ensureWindowThisTsConfigAliases(cwd: string) {
-  const tsconfigPath = join(cwd, 'tsconfig.json');
-  if (!existsSync(tsconfigPath)) return;
-
-  try {
-    const raw = readFileSync(tsconfigPath, 'utf-8');
-    const parsed = JSON.parse(raw) as { compilerOptions?: Record<string, unknown> };
-    const compilerOptions = (parsed.compilerOptions ??= {});
-
-    if (typeof compilerOptions.baseUrl !== 'string') {
-      compilerOptions.baseUrl = '.';
-    }
-
-    const paths = (compilerOptions.paths ??= {}) as Record<string, string[]>;
-    const existing = Array.isArray(paths.windowd)
-      ? paths.windowd
-      : [];
-
-    if (!existing.includes('.windowd/types')) {
-      paths.windowd = [...existing, '.windowd/types'];
-      writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf-8');
-      console.log('  updated tsconfig.json path aliases for windowd');
-    }
-  } catch (error) {
-    console.warn(`  could not update tsconfig path aliases automatically: ${String(error)}`);
   }
 }
 
