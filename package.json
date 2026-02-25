@@ -21,7 +21,8 @@
     "windowd": "./bin/cli.ts"
   },
   "files": [
-    "bin"
+    "bin",
+    "assets"
   ],
   "scripts": {
     "test-app:basics": "cd test-apps/basics && bun run ../../bin/cli.ts",

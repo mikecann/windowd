@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, basename, dirname } from 'node:path';
+import { join, basename, dirname, extname } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
@@ -70,6 +70,31 @@ interface WindowThisConfig {
 const args = parseArgs();
 const binDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgJson = JSON.parse(readFileSync(join(binDir, '../package.json'), 'utf-8'));
+const SUPPORTED_ICON_EXTS = new Set(['.png', '.ico', '.jpg', '.jpeg']);
+const DEFAULT_ICON_PATH   = join(binDir, '../assets/default-icon.png');
+
+// ─── terminal status line ─────────────────────────────────────────────────────
+
+const IS_TTY   = !!process.stdout.isTTY;
+const BLUE     = IS_TTY ? '\x1b[34m' : '';
+const GREEN    = IS_TTY ? '\x1b[32m' : '';
+const RESET    = IS_TTY ? '\x1b[0m'  : '';
+const CLR_LINE = IS_TTY ? '\r\x1b[2K' : '';
+
+let _statusLen = 0;
+
+function setStatus(msg: string, done = false) {
+  const symbol = done ? `${GREEN}✓${RESET}` : `${BLUE}●${RESET}`;
+  const line   = `  ${symbol} ${msg}`;
+  if (IS_TTY) {
+    const pad = ' '.repeat(Math.max(0, _statusLen - line.length));
+    process.stdout.write(`${CLR_LINE}${line}${pad}`);
+    _statusLen = done ? 0 : line.length;
+    if (done) process.stdout.write('\n');
+  } else if (done) {
+    process.stdout.write(`  ✓ ${msg}\n`);
+  }
+}
 type ViteProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 if (args.version) {
@@ -117,30 +142,38 @@ async function main() {
     return;
   }
 
+  setStatus('starting...');
+
   ensureTsConfig(cwd);
   ensureNwTypes(cwd);
 
   const nwBin = await ensureNwBinary();
 
-  const port = await resolveDevPort(5173);
+  setStatus('starting...');
+
+  const port = await getEphemeralPort();
   const viteConfig = createAugmentedViteConfig(cwd);
   const windowThisConfig = await loadWindowThisConfig(cwd);
+  const title = args.title ?? getTitle(cwd);
+
+  setStatus('starting vite...');
 
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
+    const url = `http://127.0.0.1:${port}`;
 
-    const url    = `http://127.0.0.1:${port}`;
-    console.log(`  windowd  ${url}`);
+    setStatus('opening window...');
 
     await openWindow({
       url,
-      title:   args.title ?? getTitle(cwd),
-      width:   args.width,
-      height:  args.height,
-      debug:   args.debug,
+      title,
+      width:  args.width,
+      height: args.height,
+      debug:  args.debug,
       nwBin,
       projectDir: cwd,
       windowThisConfig,
+      onReady: () => setStatus(`${title}    ${url}`, true),
     });
 
     stopVite(vite);
@@ -154,7 +187,6 @@ async function main() {
 // ─── vite ────────────────────────────────────────────────────────────────────
 
 async function startVite(cwd: string, port: number, configPath: string): Promise<ViteProcess> {
-  const spinner = startSpinner('starting vite');
   const vite = spawn(
     'bun',
     ['x', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--config', configPath],
@@ -166,8 +198,6 @@ async function startVite(cwd: string, port: number, configPath: string): Promise
   });
 
   await waitForServer(`http://127.0.0.1:${port}`);
-  stopSpinner(spinner, '');
-
   return vite;
 }
 
@@ -191,9 +221,10 @@ interface WindowOptions {
   nwBin:  string;
   projectDir: string;
   windowThisConfig: WindowThisConfig;
+  onReady?: () => void;
 }
 
-async function openWindow({ url, title, width, height, debug, nwBin, projectDir, windowThisConfig }: WindowOptions) {
+async function openWindow({ url, title, width, height, debug, nwBin, projectDir, windowThisConfig, onReady }: WindowOptions) {
   const closeSignal = await createCloseSignalServer();
   const hostDir = createNwHostApp({
     url,
@@ -210,6 +241,7 @@ async function openWindow({ url, title, width, height, debug, nwBin, projectDir,
     stdio: 'inherit',
     env: process.env,
   });
+  onReady?.();
 
   try {
     await Promise.race([waitForExit(nw, 'nw'), closeSignal.closed]);
@@ -266,23 +298,26 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
 
   // Now run with the freshly scaffolded project
   const nwBin = await ensureNwBinary();
-  const port = await resolveDevPort(5173);
+  const port = await getEphemeralPort();
   const viteConfig = createAugmentedViteConfig(cwd);
   const windowThisConfig = await loadWindowThisConfig(cwd);
+  const title = basename(cwd);
+  setStatus('starting vite...');
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
-    const url    = `http://127.0.0.1:${port}`;
-    console.log(`  windowd  ${url}`);
+    const url = `http://127.0.0.1:${port}`;
 
+    setStatus('opening window...');
     await openWindow({
       url,
-      title: args.title ?? basename(cwd),
+      title,
       width: args.width,
       height: args.height,
       debug: args.debug,
       nwBin,
       projectDir: cwd,
       windowThisConfig,
+      onReady: () => setStatus(`${title}    ${url}`, true),
     });
 
     stopVite(vite);
@@ -322,27 +357,6 @@ function waitForServer(url: string, maxAttempts = 40): Promise<void> {
   });
 }
 
-async function resolveDevPort(preferredPort: number): Promise<number> {
-  if (await isPortAvailable(preferredPort)) return preferredPort;
-
-  const fallbackPort = await getEphemeralPort();
-  console.log(`  port ${preferredPort} is in use, using ${fallbackPort}`);
-  return fallbackPort;
-}
-
-function isPortAvailable(port: number, host = '127.0.0.1'): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = createNetServer();
-
-    server.once('error', () => resolve(false));
-    server.once('listening', () => {
-      server.close(() => resolve(true));
-    });
-
-    server.listen(port, host);
-  });
-}
-
 function getEphemeralPort(host = '127.0.0.1'): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createNetServer();
@@ -378,6 +392,38 @@ function getTitle(cwd: string): string {
   } catch { /* ignore */ }
 
   return basename(cwd);
+}
+
+function getIconPath(cwd: string): string | null {
+  // 1. Check index.html for <link rel="icon"> or <link rel="shortcut icon">
+  try {
+    const html = readFileSync(join(cwd, 'index.html'), 'utf-8');
+    const m =
+      html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i) ??
+      html.match(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["'](?:shortcut )?icon["']/i);
+    if (m?.[1]) {
+      const href = m[1];
+      if (!href.startsWith('data:') && !href.startsWith('http')) {
+        const rel = href.startsWith('/') ? href.slice(1) : href;
+        const abs = join(cwd, rel);
+        if (SUPPORTED_ICON_EXTS.has(extname(abs).toLowerCase()) && existsSync(abs)) {
+          return abs;
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 2. Fallback - check common favicon files in project root
+  for (const name of ['favicon.ico', 'favicon.png', 'favicon.jpg']) {
+    const abs = join(cwd, name);
+    if (existsSync(abs)) return abs;
+  }
+  for (const name of ['public/favicon.ico', 'public/favicon.png', 'public/favicon.jpg']) {
+    const abs = join(cwd, name);
+    if (existsSync(abs)) return abs;
+  }
+
+  return null;
 }
 
 interface AugmentedViteConfig {
@@ -519,7 +565,6 @@ async function loadWindowThisConfig(cwd: string): Promise<WindowThisConfig> {
       console.warn('  windowd config loaded but was not an object, ignoring');
       return {};
     }
-    console.log(`  loaded ${basename(configPath)}`);
     return config;
   } catch (error) {
     console.warn(`  failed to load ${basename(configPath)}: ${String(error)}`);
@@ -704,6 +749,21 @@ function createNwHostApp({
     ...windowThisConfig.nw?.window,
   };
 
+  // Auto-detect icon unless the user already set one via windowd-config.
+  // We resolve the absolute dest path so we can pass it to node-main for win.setIcon(),
+  // which is more reliable than the manifest window.icon field on Windows.
+  let resolvedIconDest: string | null = null;
+  if (!windowConfig.icon) {
+    const iconSrc = getIconPath(projectDir) ?? DEFAULT_ICON_PATH;
+    const iconExt = extname(iconSrc);
+    const iconDest = join(hostDir, `windowd-icon${iconExt}`);
+    try {
+      copyFileSync(iconSrc, iconDest);
+      windowConfig.icon = `windowd-icon${iconExt}`;
+      resolvedIconDest = iconDest;
+    } catch { /* icon is cosmetic - ignore copy failures */ }
+  }
+
   const manifest: Record<string, unknown> = {
     name: 'windowd-host',
     main: startUrl.toString(),
@@ -721,14 +781,15 @@ function createNwHostApp({
   applyUserManifestOverrides(manifest, windowThisConfig.nw?.manifest);
 
   writeFileSync(join(hostDir, 'package.json'), JSON.stringify(manifest, null, 2), 'utf-8');
-  writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl), 'utf-8');
+  writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl, resolvedIconDest), 'utf-8');
   return hostDir;
 }
 
-function buildNodeMainJs(closeSignalUrl: string): string {
+function buildNodeMainJs(closeSignalUrl: string, iconPath: string | null): string {
   return `
 (() => {
   const closeSignalUrl = ${JSON.stringify(closeSignalUrl)};
+  const iconPath = ${JSON.stringify(iconPath)};
   const signalClose = () => {
     try {
       const http = require('http');
@@ -755,6 +816,10 @@ function buildNodeMainJs(closeSignalUrl: string): string {
   };
 
   const installHandlers = () => withWindow((win) => {
+    if (iconPath && typeof win.setIcon === 'function') {
+      try { win.setIcon(iconPath); } catch {}
+    }
+
     const openDevTools = () => {
       try {
         if (typeof win.showDevTools !== 'function') {

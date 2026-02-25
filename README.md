@@ -1,6 +1,10 @@
+![alt text](docs/logo.png)
+
 # windowd
 
 > Wrap any Vite project in an NW.js app shell with direct renderer Node.js access.
+
+![alt text](docs/ss1.png)
 
 ## WARNING
 
@@ -52,6 +56,26 @@ In this repo, demo apps live under `test-apps/`:
 
 - `test-apps/basics` shows typed `globalThis.nw` usage
 - `test-apps/config-demo` shows `windowd-config.ts` overrides
+
+## Window title and icon
+
+windowd automatically picks up the title and icon from your project so the desktop window feels native without any configuration.
+
+**Title** - resolved in priority order:
+
+1. `--title` CLI flag
+2. `windowd.title` in `package.json`
+3. `displayName` in `package.json`
+4. `name` in `package.json`
+5. `<title>` tag in `index.html`
+6. Directory name as final fallback
+
+**Icon** - resolved in priority order:
+
+1. `window.icon` set in `windowd-config.ts`
+2. `<link rel="icon">` (or `<link rel="shortcut icon">`) in `index.html` - PNG, ICO, JPG supported (SVG is skipped)
+3. `favicon.ico` / `favicon.png` / `favicon.jpg` in the project root or `public/`
+4. windowd's built-in default icon ([application_xp](https://github.com/legacy-icons/famfamfam-silk) from famfamfam-silk)
 
 ## Optional config
 
