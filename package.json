@@ -9,6 +9,10 @@
     "node",
     "devtools"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mikecann/windowd"
+  },
   "license": "MIT",
   "publishConfig": {
     "access": "public"
