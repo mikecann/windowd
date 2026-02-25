@@ -22,7 +22,9 @@ npx @mike.cann/window-this
 - Auto setup for common zero-config workflows:
   - auto-generated Vite config wrapper
   - auto-generated `tsconfig.json` when missing
+  - auto-install `@types/nw.js` for TypeScript NW API types
   - `node:*` import shim for NW runtime
+  - optional `window-this-config.ts` for NW manifest/window overrides
 
 ## How it works
 
@@ -45,6 +47,30 @@ npx @mike.cann/window-this --title "My App"
 npx @mike.cann/window-this --debug
 npx @mike.cann/window-this --init
 ```
+
+In this repo, demo apps live under `test-apps/`:
+
+- `test-apps/api-demo` shows wrapper imports and NW API usage
+- `test-apps/config-demo` shows `window-this-config.ts` overrides
+
+## Optional config
+
+Create `window-this-config.ts` in your project root to tweak NW settings.
+
+```ts
+export default {
+  nw: {
+    window: {
+      frame: false,
+      always_on_top: false,
+    },
+    chromiumArgs: "--disable-background-timer-throttling",
+    nodeRemote: ["<all_urls>"],
+  },
+};
+```
+
+You can also provide `nw.manifest` to override extra NW manifest fields. Core runtime keys (`name`, `main`, `node-main`) are protected and cannot be overridden.
 
 ### `--init`
 

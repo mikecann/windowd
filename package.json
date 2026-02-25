@@ -14,9 +14,10 @@
     "bin"
   ],
   "scripts": {
-    "test-app": "cd test-app && bun run ../bin/cli.ts",
-    "test-app:debug": "cd test-app && bun run ../bin/cli.ts --debug",
-    "test-app:prod": "cd test-app && bun run ../bin/cli.ts",
+    "test-app": "cd test-apps/api-demo && bun run ../../bin/cli.ts",
+    "test-app:debug": "cd test-apps/api-demo && bun run ../../bin/cli.ts --debug",
+    "test-app:prod": "cd test-apps/api-demo && bun run ../../bin/cli.ts",
+    "test-app:config": "cd test-apps/config-demo && bun run ../../bin/cli.ts",
     "test:html": "node test-webview.cjs html",
     "test:data": "node test-webview.cjs data",
     "test:external": "node test-webview.cjs external",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
+    "@types/nw.js": "^0.92.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",

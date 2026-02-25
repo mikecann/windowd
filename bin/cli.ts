@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
-import { spawn, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable } from 'node:stream';
 import { select } from '@inquirer/prompts';
@@ -16,6 +16,13 @@ const VITE_CONFIGS = [
   'vite.config.cjs',
 ];
 
+const WINDOW_THIS_CONFIGS = [
+  'window-this-config.ts',
+  'window-this-config.js',
+  'window-this-config.mjs',
+  'window-this-config.cjs',
+];
+
 const REQUIRED_TSCONFIG_OPTIONS: Record<string, unknown> = {
   target: 'ESNext',
   module: 'ESNext',
@@ -25,7 +32,7 @@ const REQUIRED_TSCONFIG_OPTIONS: Record<string, unknown> = {
   skipLibCheck: true,
 };
 
-const REQUIRED_TSCONFIG_TYPES = ['node', 'vite/client'];
+const REQUIRED_TSCONFIG_TYPES = ['node', 'vite/client', 'nw.js'];
 
 interface Args {
   width:   number;
@@ -35,6 +42,15 @@ interface Args {
   init:    boolean;
   version: boolean;
   help:    boolean;
+}
+
+interface WindowThisConfig {
+  nw?: {
+    window?: Record<string, unknown>;
+    nodeRemote?: string[] | string;
+    chromiumArgs?: string;
+    manifest?: Record<string, unknown>;
+  };
 }
 
 const args = parseArgs();
@@ -88,9 +104,13 @@ async function main() {
   }
 
   ensureTsConfig(cwd);
+  ensureNwTypes(cwd);
+  ensureWindowThisModuleTypes(cwd);
+  ensureWindowThisTsConfigAliases(cwd);
 
   const port = await resolveDevPort(5173);
   const viteConfig = createAugmentedViteConfig(cwd);
+  const windowThisConfig = await loadWindowThisConfig(cwd);
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
     const url    = `http://127.0.0.1:${port}`;
@@ -103,6 +123,7 @@ async function main() {
       height:  args.height,
       debug:   args.debug,
       projectDir: cwd,
+      windowThisConfig,
     });
 
     stopVite(vite);
@@ -152,11 +173,21 @@ interface WindowOptions {
   height: number;
   debug:  boolean;
   projectDir: string;
+  windowThisConfig: WindowThisConfig;
 }
 
-async function openWindow({ url, title, width, height, debug, projectDir }: WindowOptions) {
+async function openWindow({ url, title, width, height, debug, projectDir, windowThisConfig }: WindowOptions) {
   const closeSignal = await createCloseSignalServer();
-  const hostDir = createNwHostApp({ url, title, width, height, debug, projectDir, closeSignalUrl: closeSignal.url });
+  const hostDir = createNwHostApp({
+    url,
+    title,
+    width,
+    height,
+    debug,
+    projectDir,
+    closeSignalUrl: closeSignal.url,
+    windowThisConfig,
+  });
   const nwBin = await getNwBinaryPath();
   const nw = spawn(nwBin, [hostDir], {
     stdio: 'inherit',
@@ -197,8 +228,6 @@ async function handleNoProject(cwd: string) {
 }
 
 async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
-  const { spawnSync } = await import('node:child_process');
-
   console.log(`\n  scaffolding ${template} project in ${cwd}...`);
 
   const result = spawnSync(
@@ -216,10 +245,14 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
   spawnSync('bun', ['install'], { cwd, stdio: 'inherit' });
 
   ensureTsConfig(cwd);
+  ensureNwTypes(cwd);
+  ensureWindowThisModuleTypes(cwd);
+  ensureWindowThisTsConfigAliases(cwd);
 
   // Now run with the freshly scaffolded project
   const port = await resolveDevPort(5173);
   const viteConfig = createAugmentedViteConfig(cwd);
+  const windowThisConfig = await loadWindowThisConfig(cwd);
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
     const url    = `http://127.0.0.1:${port}`;
@@ -232,6 +265,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
       height: args.height,
       debug: args.debug,
       projectDir: cwd,
+      windowThisConfig,
     });
 
     stopVite(vite);
@@ -367,6 +401,26 @@ export default mod;
   };
 }
 
+function windowThisRuntimeModule() {
+  const runtimeId = '\\0window-this-runtime';
+  return {
+    name: 'window-this-runtime-module',
+    enforce: 'pre',
+    resolveId(id) {
+      if (id === '@mike.cann/window-this') return runtimeId;
+      return null;
+    },
+    load(id) {
+      if (id !== runtimeId) return null;
+      return \`
+const nw = globalThis.nw;
+export { nw };
+export default { nw };
+\`;
+    },
+  };
+}
+
 const projectDir = ${JSON.stringify(cwd)};
 const defaultFsAllow = [projectDir, path.resolve(projectDir, "..")];
 const userConfigUrl = ${JSON.stringify(userConfigUrl)};
@@ -382,8 +436,8 @@ if (userConfigUrl) {
 }
 
 const plugins = Array.isArray(userConfig.plugins)
-  ? [windowThisNodeBuiltins(), ...userConfig.plugins]
-  : [windowThisNodeBuiltins()];
+  ? [windowThisNodeBuiltins(), windowThisRuntimeModule(), ...userConfig.plugins]
+  : [windowThisNodeBuiltins(), windowThisRuntimeModule()];
 
 const userServer = userConfig.server ?? {};
 const userFs = userServer.fs ?? {};
@@ -419,6 +473,49 @@ function getUserViteConfigPath(cwd: string): string | undefined {
   return undefined;
 }
 
+async function loadWindowThisConfig(cwd: string): Promise<WindowThisConfig> {
+  const configPath = getWindowThisConfigPath(cwd);
+  if (!configPath) return {};
+
+  try {
+    const loaded = await import(pathToFileURL(configPath).href);
+    const config = (loaded?.default ?? loaded) as WindowThisConfig | undefined;
+    if (!config || typeof config !== 'object') {
+      console.warn('  window-this config loaded but was not an object, ignoring');
+      return {};
+    }
+    console.log(`  loaded ${basename(configPath)}`);
+    return config;
+  } catch (error) {
+    console.warn(`  failed to load ${basename(configPath)}: ${String(error)}`);
+    return {};
+  }
+}
+
+function getWindowThisConfigPath(cwd: string): string | undefined {
+  for (const file of WINDOW_THIS_CONFIGS) {
+    const abs = join(cwd, file);
+    if (existsSync(abs)) return abs;
+  }
+  return undefined;
+}
+
+function applyUserManifestOverrides(
+  manifest: Record<string, unknown>,
+  userManifest: Record<string, unknown> | undefined,
+) {
+  if (!userManifest) return;
+
+  const protectedKeys = new Set(['main', 'node-main', 'name']);
+  for (const [key, value] of Object.entries(userManifest)) {
+    if (protectedKeys.has(key)) {
+      console.warn(`  ignoring window-this config override for protected manifest key: ${key}`);
+      continue;
+    }
+    manifest[key] = value;
+  }
+}
+
 function ensureTsConfig(cwd: string) {
   const tsconfigPath = join(cwd, 'tsconfig.json');
   if (existsSync(tsconfigPath)) return;
@@ -435,6 +532,10 @@ function ensureTsConfig(cwd: string) {
 }
 
 function runInit(cwd: string) {
+  ensureNwTypes(cwd);
+  ensureWindowThisModuleTypes(cwd);
+  ensureWindowThisTsConfigAliases(cwd);
+
   const tsconfigPath = join(cwd, 'tsconfig.json');
   if (!existsSync(tsconfigPath)) {
     ensureTsConfig(cwd);
@@ -458,6 +559,82 @@ function runInit(cwd: string) {
     console.warn(`   - ${item}`);
   }
   console.warn('  run with your editor open and merge the missing settings manually');
+}
+
+function ensureNwTypes(cwd: string) {
+  const packageJsonPath = join(cwd, 'package.json');
+  if (!existsSync(packageJsonPath)) return;
+
+  const nwTypesPath = join(cwd, 'node_modules', '@types', 'nw.js', 'index.d.ts');
+  if (existsSync(nwTypesPath)) return;
+
+  console.log('  installing @types/nw.js for TypeScript auto-complete...');
+  const result = spawnSync('bun', ['add', '-d', '@types/nw.js'], {
+    cwd,
+    stdio: 'inherit',
+  });
+
+  if (result.status !== 0) {
+    console.warn('  could not install @types/nw.js automatically, continuing anyway');
+  }
+}
+
+function ensureWindowThisModuleTypes(cwd: string) {
+  const hiddenTypesDir = join(cwd, '.window-this');
+  const declarationsPath = join(hiddenTypesDir, 'types.d.ts');
+  if (existsSync(declarationsPath)) return;
+
+  mkdirSync(hiddenTypesDir, { recursive: true });
+
+  const content = `declare module "@mike.cann/window-this" {
+  export interface WindowApi {
+    minimize(): void;
+    maximize(): void;
+    restore(): void;
+    showDevTools(): unknown;
+    setAlwaysOnTop(flag: boolean): void;
+    frame?: boolean;
+  }
+  export interface NwApi {
+    Window: {
+      get(): WindowApi;
+    };
+  }
+  export const nw: NwApi;
+  const _default: { nw: NwApi };
+  export default _default;
+}
+`;
+  writeFileSync(declarationsPath, content, 'utf-8');
+  console.log('  created .window-this/types.d.ts for @mike.cann/window-this imports');
+}
+
+function ensureWindowThisTsConfigAliases(cwd: string) {
+  const tsconfigPath = join(cwd, 'tsconfig.json');
+  if (!existsSync(tsconfigPath)) return;
+
+  try {
+    const raw = readFileSync(tsconfigPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { compilerOptions?: Record<string, unknown> };
+    const compilerOptions = (parsed.compilerOptions ??= {});
+
+    if (typeof compilerOptions.baseUrl !== 'string') {
+      compilerOptions.baseUrl = '.';
+    }
+
+    const paths = (compilerOptions.paths ??= {}) as Record<string, string[]>;
+    const existing = Array.isArray(paths['@mike.cann/window-this'])
+      ? paths['@mike.cann/window-this']
+      : [];
+
+    if (!existing.includes('.window-this/types')) {
+      paths['@mike.cann/window-this'] = [...existing, '.window-this/types'];
+      writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf-8');
+      console.log('  updated tsconfig.json path aliases for @mike.cann/window-this');
+    }
+  } catch (error) {
+    console.warn(`  could not update tsconfig path aliases automatically: ${String(error)}`);
+  }
 }
 
 function validateExistingTsConfig(tsconfigPath: string):
@@ -529,28 +706,43 @@ interface NwHostOptions extends WindowOptions {
   closeSignalUrl: string;
 }
 
-function createNwHostApp({ url, title, width, height, debug, projectDir, closeSignalUrl }: NwHostOptions): string {
+function createNwHostApp({
+  url,
+  title,
+  width,
+  height,
+  debug,
+  projectDir,
+  closeSignalUrl,
+  windowThisConfig,
+}: NwHostOptions): string {
   const hostDir = mkdtempSync(join(tmpdir(), 'window-this-nw-'));
   const startUrl = new URL(url);
   startUrl.searchParams.set('windowThisProjectDir', projectDir);
   const nodeMainPath = join(hostDir, 'window-this-node-main.js');
+
+  const windowConfig: Record<string, unknown> = {
+    title,
+    width,
+    height,
+    ...windowThisConfig.nw?.window,
+  };
 
   const manifest: Record<string, unknown> = {
     name: 'window-this-host',
     main: startUrl.toString(),
     'single-instance': false,
     'node-main': 'window-this-node-main.js',
-    'node-remote': ['<all_urls>'],
-    window: {
-      title,
-      width,
-      height,
-    },
+    'node-remote': windowThisConfig.nw?.nodeRemote ?? ['<all_urls>'],
+    window: windowConfig,
   };
 
-  if (debug) {
-    manifest['chromium-args'] = '--enable-logging=stderr';
-  }
+  const chromiumArgs: string[] = [];
+  if (windowThisConfig.nw?.chromiumArgs) chromiumArgs.push(windowThisConfig.nw.chromiumArgs);
+  if (debug) chromiumArgs.push('--enable-logging=stderr');
+  if (chromiumArgs.length > 0) manifest['chromium-args'] = chromiumArgs.join(' ');
+
+  applyUserManifestOverrides(manifest, windowThisConfig.nw?.manifest);
 
   writeFileSync(join(hostDir, 'package.json'), JSON.stringify(manifest, null, 2), 'utf-8');
   writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl), 'utf-8');

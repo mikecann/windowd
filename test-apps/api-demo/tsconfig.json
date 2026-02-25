@@ -6,6 +6,16 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node", "vite/client"]
+    "types": [
+      "node",
+      "vite/client",
+      "nw.js"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@mike.cann/window-this": [
+        ".window-this/types"
+      ]
+    }
   }
 }
