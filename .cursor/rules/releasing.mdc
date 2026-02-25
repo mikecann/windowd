@@ -18,7 +18,11 @@ Publishing is handled automatically by the **npm Trusted Publisher** (OIDC) flow
 
 The workflow uses `--provenance` with `permissions: id-token: write`. No secrets are needed in the repo.
 
-`setup-node` MUST have both `registry-url: 'https://registry.npmjs.org'` (so npm knows the registry) AND `token: ''` (to prevent setup-node injecting `github.token` as `NODE_AUTH_TOKEN` - npm would try to auth against npm with that GitHub token and get a 404). With `token: ''`, npm falls through to the OIDC exchange with the Trusted Publisher config on npmjs.com.
+Requirements for the workflow:
+- `npm install -g npm@latest` step BEFORE publishing - the runner's bundled npm is too old to handle OIDC auth
+- `registry-url: 'https://registry.npmjs.org'` in `setup-node` so npm knows the registry
+- `repository.url` in `package.json` pointing to the GitHub repo - provenance verification requires it
+- No `NODE_AUTH_TOKEN` secret needed in the repo
 
 ## Versioning guide
 
