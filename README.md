@@ -2,6 +2,14 @@
 
 > Wrap any Vite project in an NW.js app shell with direct renderer Node.js access.
 
+## WARNING
+
+This project is intentionally **unsafe by default**.
+
+Renderer code gets unrestricted Node.js access. Any script running in your app can read/write files, run shell commands, access network resources, and perform other privileged operations on your machine.
+
+Only run trusted code with `window-this`.
+
 ```bash
 npx @mike.cann/window-this
 ```
