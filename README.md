@@ -1,10 +1,8 @@
-![alt text](docs/logo.png)
+![alt text](docs/ss1.png)
 
 # windowd
 
 > Wrap any Vite project in an NW.js app shell with direct renderer Node.js access.
-
-![alt text](docs/ss1.png)
 
 ## WARNING
 
