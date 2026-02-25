@@ -161,10 +161,7 @@ function App() {
       >
         <h1 style={{ margin: 0, color: "#a78bfa" }}>basics</h1>
         <p style={{ margin: 0, color: "#9aa7c2" }}>
-          Typed NW global access: <code>globalThis.nw</code>
-        </p>
-        <p style={{ margin: 0, color: "#9aa7c2" }}>
-          NW available: <strong>{nwWindow ? "yes" : "no"}</strong>, version:{" "}
+          NW.js available: <strong>{nwWindow ? "yes" : "no"}</strong>, version:{" "}
           <code>{nwVersion}</code>
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

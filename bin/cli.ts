@@ -370,9 +370,29 @@ function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
   const userConfigPath = getUserViteConfigPath(cwd);
   const userConfigUrl = userConfigPath ? pathToFileURL(userConfigPath).href : null;
 
+  // Auto-inject @vitejs/plugin-react for JSX/TSX projects that have no vite config of their own
+  const windowdNodeModulesDir = join(binDir, '..', 'node_modules');
+  const reactPluginPath = join(windowdNodeModulesDir, '@vitejs', 'plugin-react', 'dist', 'index.mjs');
+  const hasTsxOrJsx = ['main.tsx', 'main.jsx', 'src/main.tsx', 'src/main.jsx', 'index.tsx', 'index.jsx']
+    .some(f => existsSync(join(cwd, f)));
+  const shouldInjectReactPlugin = !userConfigPath && hasTsxOrJsx && existsSync(reactPluginPath);
+
+  // Build fallback resolve.alias entries for packages windowd ships but the user's project lacks.
+  // User's own node_modules always take priority - we only alias what's missing.
+  const fallbackAliases: Record<string, string> = {};
+  for (const dep of ['react', 'react-dom']) {
+    if (!existsSync(join(cwd, 'node_modules', dep)) && existsSync(join(windowdNodeModulesDir, dep))) {
+      fallbackAliases[dep] = join(windowdNodeModulesDir, dep);
+    }
+  }
+
+  const reactPluginImportLine = shouldInjectReactPlugin
+    ? `import react from ${JSON.stringify(pathToFileURL(reactPluginPath).href)};`
+    : '';
+
   const configContents = `
 import path from "node:path";
-
+${reactPluginImportLine}
 function windowThisNodeBuiltins() {
   const virtualPrefix = '\\0windowd-node:';
   return {
@@ -411,18 +431,30 @@ if (userConfigUrl) {
   }
 }
 
+const basePlugins = [windowThisNodeBuiltins()${shouldInjectReactPlugin ? ', react()' : ''}];
 const plugins = Array.isArray(userConfig.plugins)
-  ? [windowThisNodeBuiltins(), ...userConfig.plugins]
-  : [windowThisNodeBuiltins()];
+  ? [...basePlugins, ...userConfig.plugins]
+  : basePlugins;
 
 const userServer = userConfig.server ?? {};
 const userFs = userServer.fs ?? {};
 const userAllow = Array.isArray(userFs.allow) ? userFs.allow : [];
 const allow = [...new Set([...defaultFsAllow, ...userAllow])];
 
+const fallbackAliases = ${JSON.stringify(fallbackAliases)};
+const userResolve = userConfig.resolve ?? {};
+const userAlias = userResolve.alias;
+const mergedAlias = Array.isArray(userAlias)
+  ? [...Object.entries(fallbackAliases).map(([find, replacement]) => ({ find, replacement })), ...userAlias]
+  : { ...fallbackAliases, ...(userAlias ?? {}) };
+
 export default {
   ...userConfig,
   plugins,
+  resolve: {
+    ...userResolve,
+    alias: mergedAlias,
+  },
   server: {
     ...userServer,
     fs: {
@@ -788,7 +820,16 @@ function buildNodeMainJs(closeSignalUrl: string): string {
 
 async function getNwBinaryPath(): Promise<string> {
   const { findpath } = await import('nw');
-  return findpath('nwjs', { flavor: 'sdk' });
+  const binPath = await findpath('nwjs', { flavor: 'sdk' });
+  if (!existsSync(binPath)) {
+    throw new Error(
+      `NW.js binary not found at: ${binPath}\n` +
+      `  The nw package postinstall did not finish - likely a partial download or extraction failure.\n` +
+      `  Clear the npx cache and retry: npx --yes windowd@latest\n` +
+      `  Or if running locally: bun install && bun run bin/cli.ts`
+    );
+  }
+  return binPath;
 }
 
 interface CloseSignalServer {
