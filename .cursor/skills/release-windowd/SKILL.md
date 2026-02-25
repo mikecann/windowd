@@ -35,6 +35,8 @@ git push origin main --tags
 
 5. **Confirm** the tag appears in the push output. CI publishes to npm automatically via OIDC trusted publisher - do NOT run `npm publish` manually.
 
+6. **Watch the CI run to completion** - open the Actions tab and wait for the publish workflow triggered by the tag to finish. Check it succeeded and the new version appears on npm. Alert the user if it fails.
+
 ## Rules
 
 - Never use `&&` to chain git commands in PowerShell - use `;` instead
