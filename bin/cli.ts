@@ -1,13 +1,24 @@
 #!/usr/bin/env bun
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import type { Readable } from 'node:stream';
 import { select } from '@inquirer/prompts';
+
+const _require = createRequire(import.meta.url);
+
+function resolveOwnPackageDir(packageName: string): string | null {
+  try {
+    return dirname(_require.resolve(`${packageName}/package.json`));
+  } catch {
+    return null;
+  }
+}
 
 const VITE_CONFIGS = [
   'vite.config.js',
@@ -106,6 +117,7 @@ async function main() {
   ensureTsConfig(cwd);
   ensureNwTypes(cwd);
 
+  const nwBin = await ensureNwBinary();
   const port = await resolveDevPort(5173);
   const viteConfig = createAugmentedViteConfig(cwd);
   const windowThisConfig = await loadWindowThisConfig(cwd);
@@ -120,6 +132,7 @@ async function main() {
       width:   args.width,
       height:  args.height,
       debug:   args.debug,
+      nwBin,
       projectDir: cwd,
       windowThisConfig,
     });
@@ -170,11 +183,12 @@ interface WindowOptions {
   width:  number;
   height: number;
   debug:  boolean;
+  nwBin:  string;
   projectDir: string;
   windowThisConfig: WindowThisConfig;
 }
 
-async function openWindow({ url, title, width, height, debug, projectDir, windowThisConfig }: WindowOptions) {
+async function openWindow({ url, title, width, height, debug, nwBin, projectDir, windowThisConfig }: WindowOptions) {
   const closeSignal = await createCloseSignalServer();
   const hostDir = createNwHostApp({
     url,
@@ -182,11 +196,11 @@ async function openWindow({ url, title, width, height, debug, projectDir, window
     width,
     height,
     debug,
+    nwBin,
     projectDir,
     closeSignalUrl: closeSignal.url,
     windowThisConfig,
   });
-  const nwBin = await getNwBinaryPath();
   const nw = spawn(nwBin, [hostDir], {
     stdio: 'inherit',
     env: process.env,
@@ -246,6 +260,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
   ensureNwTypes(cwd);
 
   // Now run with the freshly scaffolded project
+  const nwBin = await ensureNwBinary();
   const port = await resolveDevPort(5173);
   const viteConfig = createAugmentedViteConfig(cwd);
   const windowThisConfig = await loadWindowThisConfig(cwd);
@@ -260,6 +275,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
       width: args.width,
       height: args.height,
       debug: args.debug,
+      nwBin,
       projectDir: cwd,
       windowThisConfig,
     });
@@ -371,22 +387,24 @@ function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
   const userConfigUrl = userConfigPath ? pathToFileURL(userConfigPath).href : null;
 
   // Auto-inject @vitejs/plugin-react for JSX/TSX projects that have no vite config of their own
-  const windowdNodeModulesDir = join(binDir, '..', 'node_modules');
-  const reactPluginPath = join(windowdNodeModulesDir, '@vitejs', 'plugin-react', 'dist', 'index.mjs');
+  const reactPluginDir = resolveOwnPackageDir('@vitejs/plugin-react');
+  const reactPluginPath = reactPluginDir ? join(reactPluginDir, 'dist', 'index.mjs') : null;
   const hasTsxOrJsx = ['main.tsx', 'main.jsx', 'src/main.tsx', 'src/main.jsx', 'index.tsx', 'index.jsx']
     .some(f => existsSync(join(cwd, f)));
-  const shouldInjectReactPlugin = !userConfigPath && hasTsxOrJsx && existsSync(reactPluginPath);
+  const shouldInjectReactPlugin = !userConfigPath && hasTsxOrJsx && !!reactPluginPath && existsSync(reactPluginPath);
 
   // Build fallback resolve.alias entries for packages windowd ships but the user's project lacks.
   // User's own node_modules always take priority - we only alias what's missing.
+  // Use module resolution (not a guessed path) so this works whether deps are nested or hoisted.
   const fallbackAliases: Record<string, string> = {};
   for (const dep of ['react', 'react-dom']) {
-    if (!existsSync(join(cwd, 'node_modules', dep)) && existsSync(join(windowdNodeModulesDir, dep))) {
-      fallbackAliases[dep] = join(windowdNodeModulesDir, dep);
+    if (!existsSync(join(cwd, 'node_modules', dep))) {
+      const resolved = resolveOwnPackageDir(dep);
+      if (resolved) fallbackAliases[dep] = resolved;
     }
   }
 
-  const reactPluginImportLine = shouldInjectReactPlugin
+  const reactPluginImportLine = shouldInjectReactPlugin && reactPluginPath
     ? `import react from ${JSON.stringify(pathToFileURL(reactPluginPath).href)};`
     : '';
 
@@ -663,6 +681,7 @@ function createNwHostApp({
   projectDir,
   closeSignalUrl,
   windowThisConfig,
+  // nwBin not needed here - used by caller
 }: NwHostOptions): string {
   const hostDir = mkdtempSync(join(tmpdir(), 'windowd-nw-'));
   const startUrl = new URL(url);
@@ -818,18 +837,65 @@ function buildNodeMainJs(closeSignalUrl: string): string {
 `;
 }
 
-async function getNwBinaryPath(): Promise<string> {
+async function ensureNwBinary(): Promise<string> {
   const { findpath } = await import('nw');
   const binPath = await findpath('nwjs', { flavor: 'sdk' });
-  if (!existsSync(binPath)) {
-    throw new Error(
-      `NW.js binary not found at: ${binPath}\n` +
-      `  The nw package postinstall did not finish - likely a partial download or extraction failure.\n` +
-      `  Clear the npx cache and retry: npx --yes windowd@latest\n` +
-      `  Or if running locally: bun install && bun run bin/cli.ts`
-    );
+  if (existsSync(binPath)) return binPath;
+
+  // Binary missing - re-run nw's own postinstall to download it
+  process.stdout.write('  NW.js runtime not found, downloading (~200 MB, first run only)...\n');
+  const spinner = startSpinner('downloading NW.js runtime');
+
+  try {
+    const nwPkgDir = dirname(_require.resolve('nw/package.json'));
+    const postinstallPath = join(nwPkgDir, 'src', 'postinstall.js');
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn('node', [postinstallPath], {
+        cwd: nwPkgDir,
+        stdio: 'pipe',
+        env: process.env,
+      });
+
+      let stderr = '';
+      proc.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr.trim() || `postinstall exited with code ${code}`));
+      });
+    });
+
+    stopSpinner(spinner, 'NW.js runtime ready');
+
+    if (!existsSync(binPath)) {
+      throw new Error('binary still missing after download completed');
+    }
+
+    return binPath;
+  } catch (err) {
+    stopSpinner(spinner, '');
+    throw new Error(`Failed to download NW.js runtime: ${err}`);
   }
-  return binPath;
+}
+
+function startSpinner(label: string): ReturnType<typeof setInterval> {
+  const frames = ['-', '\\', '|', '/'];
+  let i = 0;
+  process.stdout.write(`  ${frames[0]} ${label}`);
+  return setInterval(() => {
+    process.stdout.write(`\r  ${frames[++i % frames.length]} ${label}`);
+  }, 100);
+}
+
+function stopSpinner(timer: ReturnType<typeof setInterval>, finalLine: string) {
+  clearInterval(timer);
+  const clear = '\r' + ' '.repeat(60) + '\r';
+  if (finalLine) {
+    process.stdout.write(`${clear}  ${finalLine}\n`);
+  } else {
+    process.stdout.write(clear);
+  }
 }
 
 interface CloseSignalServer {
