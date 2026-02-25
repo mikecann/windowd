@@ -1,13 +1,13 @@
 # HMR Debug Handoff
 
-## What instantly-native is
+## What window-this is
 
-A CLI tool (`npx instantly-native` / `bun run test-app`) that:
+A CLI tool (`npx window-this` / `bun run test-app`) that:
 1. Starts a Vite dev server programmatically in the current directory
 2. Opens the app in a native OS WebView2 window (via `webview-nodejs`)
 3. Should hot-reload the WebView when source files change
 
-Run: `cd c:\dev\me\instantly-native && bun run test-app`
+Run: `cd c:\dev\me\window-this && bun run test-app`
 
 ---
 
@@ -247,7 +247,7 @@ We still need the HTML content. Options:
 - Use `execSync('curl ...')` to fetch synchronously
 
 Try **Idea 4 + 5 combined**: sentinel file approach
-1. Main thread: Vite watches files, on change writes new HTML to `.instantly-native/reload.html`
+1. Main thread: Vite watches files, on change writes new HTML to `.window-this/reload.html`
 2. Koffi worker: `setInterval` polls for existence of that file synchronously,
    reads it synchronously, calls `webview_set_html`, deletes the file
 

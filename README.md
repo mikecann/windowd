@@ -1,9 +1,9 @@
-# instantly-native
+# window-this
 
 > Wrap any Vite project in a native OS WebView - no Electron, no bundled Chromium.
 
 ```bash
-npx instantly-native
+npx window-this
 ```
 
 ---
@@ -30,14 +30,14 @@ On top of that, I want **Vite** handling the dev experience: TypeScript bundling
 React/JSX, and hot module replacement so edits appear instantly without restarting
 the app.
 
-So: **instantly-native** = Neutralino's tiny footprint + NW.js's Node.js access + Vite's
+So: **window-this** = Neutralino's tiny footprint + NW.js's Node.js access + Vite's
 dev experience, wrapped in a single `npx` command with zero config.
 
 ---
 
 ## How it works
 
-1. You run `npx instantly-native` (or `bun run instantly-native`) in any directory with
+1. You run `npx window-this` (or `bun run window-this`) in any directory with
    an `index.html` or `vite.config.*`
 2. A Vite dev server starts on `127.0.0.1:5173`
 3. A native OS WebView window opens and loads your app
@@ -64,24 +64,24 @@ scaffold one (React + TypeScript or plain vanilla).
 ```bash
 # Run in a directory with a vite.config.* or index.html
 cd my-app
-npx instantly-native
+npx window-this
 
 # Options
-npx instantly-native --width 1440 --height 900
-npx instantly-native --title "My App"
-npx instantly-native --debug        # opens DevTools
+npx window-this --width 1440 --height 900
+npx window-this --title "My App"
+npx window-this --debug        # opens DevTools
 ```
 
 ### As a dev dependency
 
 ```bash
-bun add -d instantly-native
+bun add -d window-this
 ```
 
 ```json
 {
   "scripts": {
-    "dev": "instantly-native"
+    "dev": "window-this"
   }
 }
 ```

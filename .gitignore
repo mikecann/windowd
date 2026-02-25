@@ -1,6 +1,6 @@
 node_modules/
 dist/
-.instantly-native/
+.window-this/
 
 # lockfiles - keep bun.lock, ignore npm's
 package-lock.json

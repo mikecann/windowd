@@ -17,7 +17,7 @@ export type WorkerData = {
 
 const { handleAddr, port, libPath } = workerData as WorkerData;
 
-const LOG = 'c:\\dev\\me\\instantly-native\\worker.log';
+const LOG = 'c:\\dev\\me\\window-this\\worker.log';
 const log = (msg: string) => {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try { appendFileSync(LOG, line); } catch { /* ignore */ }

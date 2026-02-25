@@ -31,17 +31,17 @@ const pkgJson = JSON.parse(readFileSync(join(binDir, '../package.json'), 'utf-8'
 type ViteProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 if (args.version) {
-  console.log(`instantly-native v${pkgJson.version}`);
+  console.log(`window-this v${pkgJson.version}`);
   process.exit(0);
 }
 
 if (args.help) {
   console.log(`
-  instantly-native v${pkgJson.version}
+  window-this v${pkgJson.version}
   Wrap a Vite app in a native OS WebView - no Electron, no bundled Chromium.
 
   Usage:
-    bun run instantly-native [options]
+    bun run window-this [options]
 
   Options:
     --width  <n>   Window width  (default: 1280)
@@ -73,7 +73,7 @@ async function main() {
   const vite = await startVite(cwd, port);
   const url    = `http://127.0.0.1:${port}`;
 
-  console.log(`  instantly-native  ${url}`);
+  console.log(`  window-this  ${url}`);
 
   await openWindow({
     url,
@@ -177,7 +177,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
   const vite = await startVite(cwd, port);
   const url    = `http://127.0.0.1:${port}`;
 
-  console.log(`  instantly-native  ${url}`);
+  console.log(`  window-this  ${url}`);
   await openWindow({ url, title: args.title ?? basename(cwd), width: args.width, height: args.height, debug: args.debug });
 
   stopVite(vite);
@@ -257,7 +257,7 @@ function getEphemeralPort(host = '127.0.0.1'): Promise<number> {
 function getTitle(cwd: string): string {
   try {
     const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf-8'));
-    if (pkg['instantly-native']?.title) return pkg['instantly-native'].title;
+    if (pkg['window-this']?.title) return pkg['window-this'].title;
     if (pkg.displayName)                return pkg.displayName;
     if (pkg.name)                       return pkg.name;
   } catch { /* ignore */ }
