@@ -1,9 +1,12 @@
 {
-  "name": "window-this",
+  "name": "@mike.cann/window-this",
   "version": "0.1.0",
   "description": "Wrap any Vite project in a native OS WebView - zero config, instant HMR",
   "keywords": ["vite", "webview", "desktop", "native", "electron-alternative"],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "window-this": "./bin/cli.ts"
   },

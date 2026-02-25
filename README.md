@@ -3,7 +3,7 @@
 > Wrap any Vite project in a native OS WebView - no Electron, no bundled Chromium.
 
 ```bash
-npx window-this
+npx @mike.cann/window-this
 ```
 
 ---
@@ -37,7 +37,7 @@ dev experience, wrapped in a single `npx` command with zero config.
 
 ## How it works
 
-1. You run `npx window-this` (or `bun run window-this`) in any directory with
+1. You run `npx @mike.cann/window-this` (or `bun run window-this`) in any directory with
    an `index.html` or `vite.config.*`
 2. A Vite dev server starts on `127.0.0.1:5173`
 3. A native OS WebView window opens and loads your app
@@ -64,18 +64,18 @@ scaffold one (React + TypeScript or plain vanilla).
 ```bash
 # Run in a directory with a vite.config.* or index.html
 cd my-app
-npx window-this
+npx @mike.cann/window-this
 
 # Options
-npx window-this --width 1440 --height 900
-npx window-this --title "My App"
-npx window-this --debug        # opens DevTools
+npx @mike.cann/window-this --width 1440 --height 900
+npx @mike.cann/window-this --title "My App"
+npx @mike.cann/window-this --debug        # opens DevTools
 ```
 
 ### As a dev dependency
 
 ```bash
-bun add -d window-this
+bun add -d @mike.cann/window-this
 ```
 
 ```json

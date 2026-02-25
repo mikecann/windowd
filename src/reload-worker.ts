@@ -5,7 +5,8 @@
 // don't fire - only timers work. So we poll Vite's HTTP endpoint to detect changes.
 
 import { workerData, parentPort } from 'node:worker_threads';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import koffi from 'koffi';
 
 export type WorkerData = {
@@ -15,11 +16,13 @@ export type WorkerData = {
   rootDir:    string;
 };
 
-const { handleAddr, port, libPath } = workerData as WorkerData;
+const { handleAddr, port, libPath, rootDir } = workerData as WorkerData;
 
-const LOG = 'c:\\dev\\me\\window-this\\worker.log';
+const LOG_DIR = join(rootDir, '.window-this');
+const LOG = join(LOG_DIR, 'worker.log');
 const log = (msg: string) => {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { mkdirSync(LOG_DIR, { recursive: true }); } catch { /* ignore */ }
   try { appendFileSync(LOG, line); } catch { /* ignore */ }
 };
 
