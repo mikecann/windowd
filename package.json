@@ -1,6 +1,6 @@
 {
   "name": "windowd",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Wrap any Vite project in an NW.js shell with full renderer Node.js access",
   "keywords": [
     "vite",

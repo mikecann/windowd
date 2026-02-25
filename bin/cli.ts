@@ -10,8 +10,10 @@ import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { select } from '@inquirer/prompts';
+import { findpath as nwFindpath } from 'nw';
 
 const _require = createRequire(import.meta.url);
+
 
 function resolveOwnPackageDir(packageName: string): string | null {
   try {
@@ -119,11 +121,14 @@ async function main() {
   ensureNwTypes(cwd);
 
   const nwBin = await ensureNwBinary();
+
   const port = await resolveDevPort(5173);
   const viteConfig = createAugmentedViteConfig(cwd);
   const windowThisConfig = await loadWindowThisConfig(cwd);
+
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
+
     const url    = `http://127.0.0.1:${port}`;
     console.log(`  windowd  ${url}`);
 
@@ -842,10 +847,9 @@ function buildNodeMainJs(closeSignalUrl: string): string {
 }
 
 async function ensureNwBinary(): Promise<string> {
-  const { findpath } = await import('nw');
   // No explicit flavor - parse.js auto-detects from the installed nw package.json version.
   // This avoids the mismatch when npm resolves "^0.108.0-sdk" to the non-sdk stable release.
-  const binPath = await findpath('nwjs');
+  const binPath = await nwFindpath('nwjs');
   if (existsSync(binPath)) return binPath;
 
   // Binary missing - re-run nw's own postinstall to download it.
