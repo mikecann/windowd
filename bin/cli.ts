@@ -149,7 +149,7 @@ async function main() {
 // ─── vite ────────────────────────────────────────────────────────────────────
 
 async function startVite(cwd: string, port: number, configPath: string): Promise<ViteProcess> {
-  process.stdout.write('  starting vite...');
+  const spinner = startSpinner('starting vite');
   const vite = spawn(
     'bun',
     ['x', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--config', configPath],
@@ -160,9 +160,8 @@ async function startVite(cwd: string, port: number, configPath: string): Promise
     process.stderr.write(chunk);
   });
 
-  process.stdout.write('  waiting for vite...');
   await waitForServer(`http://127.0.0.1:${port}`);
-  process.stdout.write('\r  \r');
+  stopSpinner(spinner, '');
 
   return vite;
 }
