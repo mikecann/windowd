@@ -16,7 +16,9 @@ alwaysApply: true
 
 Publishing is handled automatically by the **npm Trusted Publisher** (OIDC) flow - pushing the tag triggers it via CI. Do NOT run `npm publish` manually.
 
-The workflow uses `--provenance` with `permissions: id-token: write`. Do NOT add `registry-url` to the `setup-node` step - that writes an `.npmrc` expecting `NODE_AUTH_TOKEN` which conflicts with OIDC auth and causes a 404. No secrets are needed in the repo.
+The workflow uses `--provenance` with `permissions: id-token: write`. No secrets are needed in the repo.
+
+`setup-node` MUST have both `registry-url: 'https://registry.npmjs.org'` (so npm knows the registry) AND `token: ''` (to prevent setup-node injecting `github.token` as `NODE_AUTH_TOKEN` - npm would try to auth against npm with that GitHub token and get a 404). With `token: ''`, npm falls through to the OIDC exchange with the Trusted Publisher config on npmjs.com.
 
 ## Versioning guide
 
