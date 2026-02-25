@@ -1,8 +1,8 @@
 {
   "name": "@mike.cann/window-this",
   "version": "0.1.0",
-  "description": "Wrap any Vite project in a native OS WebView - zero config, instant HMR",
-  "keywords": ["vite", "webview", "desktop", "native", "electron-alternative"],
+  "description": "Wrap any Vite project in an NW.js shell with full renderer Node.js access",
+  "keywords": ["vite", "nwjs", "desktop", "node", "devtools"],
   "license": "MIT",
   "publishConfig": {
     "access": "public"

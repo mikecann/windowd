@@ -155,15 +155,25 @@ interface WindowOptions {
 }
 
 async function openWindow({ url, title, width, height, debug, projectDir }: WindowOptions) {
-  const hostDir = createNwHostApp({ url, title, width, height, debug, projectDir });
-  const nw = spawn('bun', ['x', 'nw', hostDir], {
+  const closeSignal = await createCloseSignalServer();
+  const hostDir = createNwHostApp({ url, title, width, height, debug, projectDir, closeSignalUrl: closeSignal.url });
+  const nwBin = await getNwBinaryPath();
+  const nw = spawn(nwBin, [hostDir], {
     stdio: 'inherit',
     env: process.env,
   });
 
   try {
-    await waitForExit(nw, 'nw');
+    await Promise.race([waitForExit(nw, 'nw'), closeSignal.closed]);
   } finally {
+    closeSignal.stop();
+    if (!nw.killed) {
+      try {
+        nw.kill('SIGTERM');
+      } catch {
+        // ignore cleanup errors
+      }
+    }
     rmSync(hostDir, { recursive: true, force: true });
   }
 }
@@ -515,19 +525,22 @@ function parseArgs(): Args {
   };
 }
 
-interface NwHostOptions extends WindowOptions {}
+interface NwHostOptions extends WindowOptions {
+  closeSignalUrl: string;
+}
 
-function createNwHostApp({ url, title, width, height, debug, projectDir }: NwHostOptions): string {
+function createNwHostApp({ url, title, width, height, debug, projectDir, closeSignalUrl }: NwHostOptions): string {
   const hostDir = mkdtempSync(join(tmpdir(), 'window-this-nw-'));
   const startUrl = new URL(url);
   startUrl.searchParams.set('windowThisProjectDir', projectDir);
-  const injectedJsPath = join(hostDir, 'window-this-inject.js');
+  const nodeMainPath = join(hostDir, 'window-this-node-main.js');
 
   const manifest: Record<string, unknown> = {
     name: 'window-this-host',
     main: startUrl.toString(),
+    'single-instance': false,
+    'node-main': 'window-this-node-main.js',
     'node-remote': ['<all_urls>'],
-    inject_js_start: 'window-this-inject.js',
     window: {
       title,
       width,
@@ -540,55 +553,182 @@ function createNwHostApp({ url, title, width, height, debug, projectDir }: NwHos
   }
 
   writeFileSync(join(hostDir, 'package.json'), JSON.stringify(manifest, null, 2), 'utf-8');
-  writeFileSync(injectedJsPath, buildInjectedNwJs(), 'utf-8');
+  writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl), 'utf-8');
   return hostDir;
 }
 
-function buildInjectedNwJs(): string {
+function buildNodeMainJs(closeSignalUrl: string): string {
   return `
 (() => {
-  if (typeof nw === 'undefined') return;
-
-  const openDevTools = () => {
+  const closeSignalUrl = ${JSON.stringify(closeSignalUrl)};
+  const signalClose = () => {
     try {
-      const win = nw.Window.get();
-      if (!win || typeof win.showDevTools !== 'function') {
-        console.warn('[window-this] DevTools unavailable - ensure NW.js SDK build is installed.');
-        return;
+      const http = require('http');
+      const req = http.request(closeSignalUrl, { method: 'POST' });
+      req.on('error', () => {});
+      req.end('closed');
+    } catch {}
+  };
+
+  const nwApi = typeof globalThis.nw !== 'undefined' ? globalThis.nw : null;
+  if (!nwApi || !nwApi.Window || !nwApi.Window.get) {
+    console.warn('[window-this] NW API unavailable in node-main.');
+    return;
+  }
+
+  const withWindow = (fn) => {
+    try {
+      const win = nwApi.Window.get();
+      if (!win) return;
+      fn(win);
+    } catch {
+      // ignore
+    }
+  };
+
+  const installHandlers = () => withWindow((win) => {
+    const openDevTools = () => {
+      try {
+        if (typeof win.showDevTools !== 'function') {
+          console.warn('[window-this] DevTools unavailable - ensure NW.js SDK build is installed.');
+          try { alert('[window-this] DevTools unavailable in this NW runtime.'); } catch {}
+          return;
+        }
+        const devtoolsWin = win.showDevTools();
+        if (devtoolsWin && typeof devtoolsWin.focus === 'function') {
+          devtoolsWin.focus();
+        }
+      } catch (error) {
+        console.error('[window-this] Failed to open DevTools', error);
+        try { alert('[window-this] Failed to open DevTools.'); } catch {}
       }
-      win.showDevTools();
-    } catch (error) {
-      console.error('[window-this] Failed to open DevTools', error);
+    };
+
+    const menu = new nwApi.Menu();
+    menu.append(new nwApi.MenuItem({
+      label: 'Inspect / DevTools',
+      click: openDevTools,
+    }));
+
+    const attachToDocument = () => {
+      const doc = win.window && win.window.document;
+      if (!doc) return;
+
+      const onContextMenu = (event) => {
+        event.preventDefault();
+        const x = typeof event.x === 'number' ? event.x : event.clientX;
+        const y = typeof event.y === 'number' ? event.y : event.clientY;
+        try {
+          menu.popup(x, y);
+        } catch (error) {
+          console.warn('[window-this] Context menu failed, opening DevTools directly.', error);
+          openDevTools();
+        }
+        return false;
+      };
+
+      doc.addEventListener('contextmenu', onContextMenu, true);
+      win.window.addEventListener('keydown', (event) => {
+        const openByF12 = event.key === 'F12';
+        const openByShortcut = (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'i';
+        if (openByF12 || openByShortcut) {
+          event.preventDefault();
+          openDevTools();
+        }
+      });
+
+      win.window.addEventListener('beforeunload', signalClose);
+      win.window.addEventListener('unload', signalClose);
+    };
+
+    if (win.window && win.window.document) {
+      attachToDocument();
+    } else {
+      win.on('loaded', attachToDocument);
     }
-  };
 
-  const menu = new nw.Menu();
-  menu.append(new nw.MenuItem({
-    label: 'Inspect / DevTools',
-    click: openDevTools,
-  }));
-
-  const onContextMenu = (event) => {
-    event.preventDefault();
-    const x = typeof event.x === 'number' ? event.x : event.clientX;
-    const y = typeof event.y === 'number' ? event.y : event.clientY;
-    menu.popup(x, y);
-    return false;
-  };
-
-  window.addEventListener('contextmenu', onContextMenu);
-  document.addEventListener('contextmenu', onContextMenu);
-
-  window.addEventListener('keydown', (event) => {
-    const openByF12 = event.key === 'F12';
-    const openByShortcut = (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'i';
-    if (openByF12 || openByShortcut) {
-      event.preventDefault();
-      openDevTools();
-    }
+    win.on('close', function() {
+      signalClose();
+      try {
+        this.close(true);
+      } catch {}
+      try {
+        nwApi.App.quit();
+      } catch {}
+      try {
+        process.exit(0);
+      } catch {}
+    });
   });
+
+  installHandlers();
+
+  if (nwApi.App && typeof nwApi.App.on === 'function') {
+    nwApi.App.on('window-all-closed', () => {
+      signalClose();
+      try {
+        nwApi.App.quit();
+      } catch {}
+      try {
+        process.exit(0);
+      } catch {}
+    });
+  }
 })();
 `;
+}
+
+async function getNwBinaryPath(): Promise<string> {
+  const { findpath } = await import('nw');
+  return findpath('nwjs', { flavor: 'sdk' });
+}
+
+interface CloseSignalServer {
+  url: string;
+  closed: Promise<void>;
+  stop: () => void;
+}
+
+async function createCloseSignalServer(): Promise<CloseSignalServer> {
+  const port = await getEphemeralPort();
+  let resolved = false;
+  let resolveClosed!: () => void;
+  const closed = new Promise<void>((resolve) => {
+    resolveClosed = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+  });
+
+  const server = createNetServer((socket) => {
+    socket.once('data', () => {
+      resolveClosed();
+      try {
+        socket.write('HTTP/1.1 204 No Content\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n');
+      } catch {
+        // ignore socket write errors
+      }
+      socket.end();
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => resolve());
+  });
+
+  return {
+    url: `http://127.0.0.1:${port}/closed`,
+    closed,
+    stop: () => {
+      try {
+        server.close();
+      } catch {
+        // ignore
+      }
+    },
+  };
 }
 
 function waitForExit(proc: ChildProcess, name: string): Promise<void> {
