@@ -7,6 +7,7 @@ import { createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync, type ChildProcess, type ChildProcessByStdio } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { select } from '@inquirer/prompts';
 
@@ -383,6 +384,9 @@ interface AugmentedViteConfig {
 function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
   const tempDir = mkdtempSync(join(tmpdir(), 'windowd-vite-'));
   const configPath = join(tempDir, 'vite.config.mjs');
+  // Stable per-project cache dir in OS temp - keeps .vite out of the user's project entirely
+  const projectHash = createHash('sha256').update(cwd).digest('hex').slice(0, 8);
+  const viteCacheDir = join(tmpdir(), 'windowd-vite-cache', projectHash);
   const userConfigPath = getUserViteConfigPath(cwd);
   const userConfigUrl = userConfigPath ? pathToFileURL(userConfigPath).href : null;
 
@@ -467,6 +471,7 @@ const mergedAlias = Array.isArray(userAlias)
   : { ...fallbackAliases, ...(userAlias ?? {}) };
 
 export default {
+  cacheDir: ${JSON.stringify(viteCacheDir)},
   ...userConfig,
   plugins,
   resolve: {
