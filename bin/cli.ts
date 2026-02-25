@@ -842,7 +842,9 @@ async function ensureNwBinary(): Promise<string> {
   const binPath = await findpath('nwjs', { flavor: 'sdk' });
   if (existsSync(binPath)) return binPath;
 
-  // Binary missing - re-run nw's own postinstall to download it
+  // Binary missing - re-run nw's own postinstall to download it.
+  // NWJS_CACHE=false forces deletion of any existing (potentially corrupt) zip so we get a
+  // clean download rather than trying to decompress a truncated file from the first install.
   process.stdout.write('  NW.js runtime not found, downloading (~200 MB, first run only)...\n');
   const spinner = startSpinner('downloading NW.js runtime');
 
@@ -850,14 +852,14 @@ async function ensureNwBinary(): Promise<string> {
     const nwPkgDir = dirname(_require.resolve('nw/package.json'));
     const postinstallPath = join(nwPkgDir, 'src', 'postinstall.js');
 
+    let stderr = '';
     await new Promise<void>((resolve, reject) => {
       const proc = spawn('node', [postinstallPath], {
         cwd: nwPkgDir,
         stdio: 'pipe',
-        env: process.env,
+        env: { ...process.env, NWJS_CACHE: 'false' },
       });
 
-      let stderr = '';
       proc.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
       proc.on('close', (code) => {
@@ -868,8 +870,10 @@ async function ensureNwBinary(): Promise<string> {
 
     stopSpinner(spinner, 'NW.js runtime ready');
 
+    // postinstall.js catches all errors and always exits 0, so check binary exists
     if (!existsSync(binPath)) {
-      throw new Error('binary still missing after download completed');
+      const detail = stderr.trim();
+      throw new Error(detail || 'binary still missing after download (check disk space and permissions)');
     }
 
     return binPath;
