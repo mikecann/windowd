@@ -14,7 +14,8 @@
     "bin"
   ],
   "scripts": {
-    "test-app": "cd test-app && bun run ../bin/cli.ts --debug",
+    "test-app": "cd test-app && bun run ../bin/cli.ts",
+    "test-app:debug": "cd test-app && bun run ../bin/cli.ts --debug",
     "test-app:prod": "cd test-app && bun run ../bin/cli.ts",
     "test:html": "node test-webview.cjs html",
     "test:data": "node test-webview.cjs data",
@@ -26,12 +27,20 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.3.0",
+    "nw": "^0.108.0-sdk",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "vite": "^6.0.0",
-    "webview-nodejs": "^0.2.4",
     "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
-    "@types/ws": "^8.18.1"
-  }
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.1.4"
+  },
+  "trustedDependencies": [
+    "nw"
+  ]
 }
