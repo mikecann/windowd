@@ -1,8 +1,3 @@
----
-description: Release process for windowd
-alwaysApply: true
----
-
 # Releasing windowd
 
 ## Version bump + commit + tag
