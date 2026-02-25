@@ -2,7 +2,13 @@
   "name": "windowd",
   "version": "0.3.0",
   "description": "Wrap any Vite project in an NW.js shell with full renderer Node.js access",
-  "keywords": ["vite", "nwjs", "desktop", "node", "devtools"],
+  "keywords": [
+    "vite",
+    "nwjs",
+    "desktop",
+    "node",
+    "devtools"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -14,9 +20,9 @@
     "bin"
   ],
   "scripts": {
-    "test-app": "cd test-apps/api-demo && bun run ../../bin/cli.ts",
-    "test-app:debug": "cd test-apps/api-demo && bun run ../../bin/cli.ts --debug",
-    "test-app:prod": "cd test-apps/api-demo && bun run ../../bin/cli.ts",
+    "test-app:basics": "cd test-apps/basics && bun run ../../bin/cli.ts",
+    "test-app:debug": "cd test-apps/basics && bun run ../../bin/cli.ts --debug",
+    "test-app:prod": "cd test-apps/basics && bun run ../../bin/cli.ts",
     "test-app:config": "cd test-apps/config-demo && bun run ../../bin/cli.ts",
     "test:html": "node test-webview.cjs html",
     "test:data": "node test-webview.cjs data",
