@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@mike.cann/window-this",
+      "name": "windowd",
       "dependencies": {
         "@inquirer/prompts": "^8.3.0",
         "nw": "^0.108.0-sdk",

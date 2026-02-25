@@ -13,8 +13,8 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@mike.cann/window-this": [
-        ".window-this/types"
+      "windowd": [
+        ".windowd/types"
       ]
     }
   }

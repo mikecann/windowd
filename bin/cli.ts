@@ -17,10 +17,10 @@ const VITE_CONFIGS = [
 ];
 
 const WINDOW_THIS_CONFIGS = [
-  'window-this-config.ts',
-  'window-this-config.js',
-  'window-this-config.mjs',
-  'window-this-config.cjs',
+  'windowd-config.ts',
+  'windowd-config.js',
+  'windowd-config.mjs',
+  'windowd-config.cjs',
 ];
 
 const REQUIRED_TSCONFIG_OPTIONS: Record<string, unknown> = {
@@ -59,17 +59,17 @@ const pkgJson = JSON.parse(readFileSync(join(binDir, '../package.json'), 'utf-8'
 type ViteProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 if (args.version) {
-  console.log(`window-this v${pkgJson.version}`);
+  console.log(`windowd v${pkgJson.version}`);
   process.exit(0);
 }
 
 if (args.help) {
   console.log(`
-  window-this v${pkgJson.version}
+  windowd v${pkgJson.version}
   Wrap a Vite app in an NW.js host with full renderer Node.js access.
 
   Usage:
-    bun run window-this [options]
+    bun run windowd [options]
 
   Options:
     --width  <n>   Window width  (default: 1280)
@@ -114,7 +114,7 @@ async function main() {
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
     const url    = `http://127.0.0.1:${port}`;
-    console.log(`  window-this  ${url}`);
+    console.log(`  windowd  ${url}`);
 
     await openWindow({
       url,
@@ -256,7 +256,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
   try {
     const vite = await startVite(cwd, port, viteConfig.configPath);
     const url    = `http://127.0.0.1:${port}`;
-    console.log(`  window-this  ${url}`);
+    console.log(`  windowd  ${url}`);
 
     await openWindow({
       url,
@@ -349,7 +349,7 @@ function getEphemeralPort(host = '127.0.0.1'): Promise<number> {
 function getTitle(cwd: string): string {
   try {
     const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf-8'));
-    if (pkg['window-this']?.title) return pkg['window-this'].title;
+    if (pkg.windowd?.title) return pkg.windowd.title;
     if (pkg.displayName)                return pkg.displayName;
     if (pkg.name)                       return pkg.name;
   } catch { /* ignore */ }
@@ -369,7 +369,7 @@ interface AugmentedViteConfig {
 }
 
 function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
-  const tempDir = mkdtempSync(join(tmpdir(), 'window-this-vite-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'windowd-vite-'));
   const configPath = join(tempDir, 'vite.config.mjs');
   const userConfigPath = getUserViteConfigPath(cwd);
   const userConfigUrl = userConfigPath ? pathToFileURL(userConfigPath).href : null;
@@ -378,9 +378,9 @@ function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
 import path from "node:path";
 
 function windowThisNodeBuiltins() {
-  const virtualPrefix = '\\0window-this-node:';
+  const virtualPrefix = '\\0windowd-node:';
   return {
-    name: 'window-this-nw-node-builtins',
+    name: 'windowd-nw-node-builtins',
     enforce: 'pre',
     resolveId(id) {
       if (id.startsWith('node:')) return virtualPrefix + id;
@@ -392,7 +392,7 @@ function windowThisNodeBuiltins() {
       return \`
 const requireFn = globalThis.require;
 if (typeof requireFn !== "function") {
-  throw new Error("window-this expected Node integration, but globalThis.require is missing.");
+  throw new Error("windowd expected Node integration, but globalThis.require is missing.");
 }
 const mod = requireFn(\${JSON.stringify(nodeSpecifier)});
 export default mod;
@@ -402,12 +402,12 @@ export default mod;
 }
 
 function windowThisRuntimeModule() {
-  const runtimeId = '\\0window-this-runtime';
+  const runtimeId = '\\0windowd-runtime';
   return {
-    name: 'window-this-runtime-module',
+    name: 'windowd-runtime-module',
     enforce: 'pre',
     resolveId(id) {
-      if (id === '@mike.cann/window-this') return runtimeId;
+      if (id === 'windowd') return runtimeId;
       return null;
     },
     load(id) {
@@ -481,7 +481,7 @@ async function loadWindowThisConfig(cwd: string): Promise<WindowThisConfig> {
     const loaded = await import(pathToFileURL(configPath).href);
     const config = (loaded?.default ?? loaded) as WindowThisConfig | undefined;
     if (!config || typeof config !== 'object') {
-      console.warn('  window-this config loaded but was not an object, ignoring');
+      console.warn('  windowd config loaded but was not an object, ignoring');
       return {};
     }
     console.log(`  loaded ${basename(configPath)}`);
@@ -509,7 +509,7 @@ function applyUserManifestOverrides(
   const protectedKeys = new Set(['main', 'node-main', 'name']);
   for (const [key, value] of Object.entries(userManifest)) {
     if (protectedKeys.has(key)) {
-      console.warn(`  ignoring window-this config override for protected manifest key: ${key}`);
+      console.warn(`  ignoring windowd config override for protected manifest key: ${key}`);
       continue;
     }
     manifest[key] = value;
@@ -580,13 +580,13 @@ function ensureNwTypes(cwd: string) {
 }
 
 function ensureWindowThisModuleTypes(cwd: string) {
-  const hiddenTypesDir = join(cwd, '.window-this');
+  const hiddenTypesDir = join(cwd, '.windowd');
   const declarationsPath = join(hiddenTypesDir, 'types.d.ts');
   if (existsSync(declarationsPath)) return;
 
   mkdirSync(hiddenTypesDir, { recursive: true });
 
-  const content = `declare module "@mike.cann/window-this" {
+  const content = `declare module "windowd" {
   export interface WindowApi {
     minimize(): void;
     maximize(): void;
@@ -606,7 +606,7 @@ function ensureWindowThisModuleTypes(cwd: string) {
 }
 `;
   writeFileSync(declarationsPath, content, 'utf-8');
-  console.log('  created .window-this/types.d.ts for @mike.cann/window-this imports');
+  console.log('  created .windowd/types.d.ts for windowd imports');
 }
 
 function ensureWindowThisTsConfigAliases(cwd: string) {
@@ -623,14 +623,14 @@ function ensureWindowThisTsConfigAliases(cwd: string) {
     }
 
     const paths = (compilerOptions.paths ??= {}) as Record<string, string[]>;
-    const existing = Array.isArray(paths['@mike.cann/window-this'])
-      ? paths['@mike.cann/window-this']
+    const existing = Array.isArray(paths.windowd)
+      ? paths.windowd
       : [];
 
-    if (!existing.includes('.window-this/types')) {
-      paths['@mike.cann/window-this'] = [...existing, '.window-this/types'];
+    if (!existing.includes('.windowd/types')) {
+      paths.windowd = [...existing, '.windowd/types'];
       writeFileSync(tsconfigPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf-8');
-      console.log('  updated tsconfig.json path aliases for @mike.cann/window-this');
+      console.log('  updated tsconfig.json path aliases for windowd');
     }
   } catch (error) {
     console.warn(`  could not update tsconfig path aliases automatically: ${String(error)}`);
@@ -716,10 +716,10 @@ function createNwHostApp({
   closeSignalUrl,
   windowThisConfig,
 }: NwHostOptions): string {
-  const hostDir = mkdtempSync(join(tmpdir(), 'window-this-nw-'));
+  const hostDir = mkdtempSync(join(tmpdir(), 'windowd-nw-'));
   const startUrl = new URL(url);
   startUrl.searchParams.set('windowThisProjectDir', projectDir);
-  const nodeMainPath = join(hostDir, 'window-this-node-main.js');
+  const nodeMainPath = join(hostDir, 'windowd-node-main.js');
 
   const windowConfig: Record<string, unknown> = {
     title,
@@ -729,10 +729,10 @@ function createNwHostApp({
   };
 
   const manifest: Record<string, unknown> = {
-    name: 'window-this-host',
+    name: 'windowd-host',
     main: startUrl.toString(),
     'single-instance': false,
-    'node-main': 'window-this-node-main.js',
+    'node-main': 'windowd-node-main.js',
     'node-remote': windowThisConfig.nw?.nodeRemote ?? ['<all_urls>'],
     window: windowConfig,
   };
@@ -764,7 +764,7 @@ function buildNodeMainJs(closeSignalUrl: string): string {
 
   const nwApi = typeof globalThis.nw !== 'undefined' ? globalThis.nw : null;
   if (!nwApi || !nwApi.Window || !nwApi.Window.get) {
-    console.warn('[window-this] NW API unavailable in node-main.');
+    console.warn('[windowd] NW API unavailable in node-main.');
     return;
   }
 
@@ -782,8 +782,8 @@ function buildNodeMainJs(closeSignalUrl: string): string {
     const openDevTools = () => {
       try {
         if (typeof win.showDevTools !== 'function') {
-          console.warn('[window-this] DevTools unavailable - ensure NW.js SDK build is installed.');
-          try { alert('[window-this] DevTools unavailable in this NW runtime.'); } catch {}
+          console.warn('[windowd] DevTools unavailable, ensure NW.js SDK build is installed.');
+          try { alert('[windowd] DevTools unavailable in this NW runtime.'); } catch {}
           return;
         }
         const devtoolsWin = win.showDevTools();
@@ -791,8 +791,8 @@ function buildNodeMainJs(closeSignalUrl: string): string {
           devtoolsWin.focus();
         }
       } catch (error) {
-        console.error('[window-this] Failed to open DevTools', error);
-        try { alert('[window-this] Failed to open DevTools.'); } catch {}
+        console.error('[windowd] Failed to open DevTools', error);
+        try { alert('[windowd] Failed to open DevTools.'); } catch {}
       }
     };
 
@@ -813,7 +813,7 @@ function buildNodeMainJs(closeSignalUrl: string): string {
         try {
           menu.popup(x, y);
         } catch (error) {
-          console.warn('[window-this] Context menu failed, opening DevTools directly.', error);
+          console.warn('[windowd] Context menu failed, opening DevTools directly.', error);
           openDevTools();
         }
         return false;

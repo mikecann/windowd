@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import fs from "node:fs";
 import path from "node:path";
-import { nw, type WindowApi } from "@mike.cann/window-this";
+import { nw, type WindowApi } from "windowd";
 
 const projectDirFromQuery = new URLSearchParams(window.location.search).get("windowThisProjectDir");
 const FILE_ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect x='3' y='2' width='10' height='12' fill='%23dfe6ff' stroke='%23707aa0'/%3E%3C/svg%3E";
@@ -55,7 +55,7 @@ function App() {
       <section style={{ width: "min(900px,100%)", margin: "0 auto", background: "#12162b", border: "1px solid #2a3152", borderRadius: 14, padding: 24, display: "grid", gap: 12 }}>
         <h1 style={{ margin: 0, color: "#a78bfa" }}>api-demo</h1>
         <p style={{ margin: 0, color: "#9aa7c2" }}>
-          Typed runtime wrapper import: <code>import &#123; nw &#125; from "@mike.cann/window-this"</code>
+          Typed runtime wrapper import: <code>import &#123; nw &#125; from "windowd"</code>
         </p>
         <p style={{ margin: 0, color: "#9aa7c2" }}>
           NW available: <strong>{nwWindow ? "yes" : "no"}</strong>, version: <code>{nwVersion}</code>

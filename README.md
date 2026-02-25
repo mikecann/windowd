@@ -1,4 +1,4 @@
-# window-this
+# windowd
 
 > Wrap any Vite project in an NW.js app shell with direct renderer Node.js access.
 
@@ -8,10 +8,10 @@ This project is intentionally **unsafe by default**.
 
 Renderer code gets unrestricted Node.js access. Any script running in your app can read/write files, run shell commands, access network resources, and perform other privileged operations on your machine.
 
-Only run trusted code with `window-this`.
+Only run trusted code with `windowd`.
 
 ```bash
-npx @mike.cann/window-this
+npx windowd
 ```
 
 ## What this gives you
@@ -24,11 +24,11 @@ npx @mike.cann/window-this
   - auto-generated `tsconfig.json` when missing
   - auto-install `@types/nw.js` for TypeScript NW API types
   - `node:*` import shim for NW runtime
-  - optional `window-this-config.ts` for NW manifest/window overrides
+  - optional `windowd-config.ts` for NW manifest/window overrides
 
 ## How it works
 
-1. Run `window-this` in a project directory
+1. Run `windowd` in a project directory
 2. Vite starts on localhost
 3. A temporary NW host app is generated and launched
 4. Your app loads in NW with Node enabled for remote page
@@ -39,23 +39,23 @@ When the app window closes, the CLI exits and Vite is shut down.
 
 ```bash
 # inside your project directory
-npx @mike.cann/window-this
+npx windowd
 
 # options
-npx @mike.cann/window-this --width 1440 --height 900
-npx @mike.cann/window-this --title "My App"
-npx @mike.cann/window-this --debug
-npx @mike.cann/window-this --init
+npx windowd --width 1440 --height 900
+npx windowd --title "My App"
+npx windowd --debug
+npx windowd --init
 ```
 
 In this repo, demo apps live under `test-apps/`:
 
 - `test-apps/api-demo` shows wrapper imports and NW API usage
-- `test-apps/config-demo` shows `window-this-config.ts` overrides
+- `test-apps/config-demo` shows `windowd-config.ts` overrides
 
 ## Optional config
 
-Create `window-this-config.ts` in your project root to tweak NW settings.
+Create `windowd-config.ts` in your project root to tweak NW settings.
 
 ```ts
 export default {

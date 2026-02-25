@@ -18,7 +18,7 @@ export type WorkerData = {
 
 const { handleAddr, port, libPath, rootDir } = workerData as WorkerData;
 
-const LOG_DIR = join(rootDir, '.window-this');
+const LOG_DIR = join(rootDir, '.windowd');
 const LOG = join(LOG_DIR, 'worker.log');
 const log = (msg: string) => {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
