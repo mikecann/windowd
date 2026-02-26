@@ -46,22 +46,31 @@ That's it. You get a desktop window with Vite HMR and full Node.js APIs availabl
 
 ## Using Node.js in the renderer
 
-The whole point of windowd is that your renderer code has unrestricted Node.js access. Standard browser APIs and Node.js APIs work side by side:
+Yeah, this isn't the safest thing in the world ⚠️ but so long as you're running your own trusted code then YOLO 🤷‍♂️ What it does get you is all the power of a desktop app and all the power of a web app, all in one. Read files, spawn processes, grab system info, then render it all with React:
 
-```js
-import { readFileSync, writeFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+```tsx
+import { readFileSync } from 'node:fs';
+import os from 'node:os';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
 
-const config = JSON.parse(readFileSync('./config.json', 'utf-8'));
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const cpus = os.cpus().length;
+const mem = Math.round(os.totalmem() / 1024 / 1024 / 1024);
 
-const branch = execSync('git branch --show-current').toString().trim();
+function App() {
+  return (
+    <div>
+      <h1>{pkg.name} v{pkg.version}</h1>
+      <p>{cpus} cores, {mem} GB RAM, {os.platform()}</p>
+    </div>
+  );
+}
 
-writeFileSync('./output.txt', 'written from the renderer');
+createRoot(document.getElementById('root')!).render(<App />);
 ```
 
-This works because windowd runs your app inside [NW.js](https://nwjs.io/) with Node integration enabled for the renderer process. Vite's `node:*` imports are shimmed at build time to use the runtime's built-in `require`.
-
-> **Heads up:** any script running in your app can read/write files, run shell commands, and access the network with full OS-level permissions. Only run code you trust.
+> **⚠️ Warning ⚠️** any script running in your app can read/write files, run shell commands, and access the network with full OS-level permissions. Only run code you trust.
 
 ## Scaffolding a new project
 
