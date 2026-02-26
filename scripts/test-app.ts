@@ -7,7 +7,7 @@ const forwardedArgs = process.argv.slice(3);
 
 const appMap: Record<string, string> = {
   basics: 'test-apps/basics',
-  config: 'test-apps/config-demo',
+  config: 'test-apps/config',
   justhtml: 'test-apps/justhtml',
 };
 

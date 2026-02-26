@@ -155,3 +155,20 @@ DevTools require the NW.js SDK build, which windowd installs by default.
 2. A temporary NW.js host app is generated with Node integration enabled
 3. NW.js opens your app URL with full `node-remote` access
 4. When the window closes, Vite and the host app are cleaned up automatically
+
+## Example apps
+
+The repo includes test apps you can run to see different features in action:
+
+```bash
+git clone https://github.com/mikecann/windowd.git
+cd windowd
+bun install
+bun run test-app <name>
+```
+
+| Name | Command | What it demonstrates |
+|---|---|---|
+| `basics` | `bun run test-app basics` | React + TypeScript, `node:fs` directory listing, Vite asset imports, NW.js window APIs (minimize, maximize, always-on-top, child windows) |
+| `config` | `bun run test-app config` | Frameless window via `windowd-config.ts`, shows how to customize NW.js settings |
+| `justhtml` | `bun run test-app justhtml` | Plain HTML with zero config, no TypeScript, no `package.json`, HMR still works |
