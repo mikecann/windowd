@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, type Dirent } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename, dirname, extname } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
@@ -144,7 +144,7 @@ async function main() {
 
   setStatus('starting...');
 
-  ensureTsConfig(cwd);
+  if (shouldAutoCreateTsConfig(cwd)) ensureTsConfig(cwd);
   ensureNwTypes(cwd);
 
   const nwBin = await ensureNwBinary();
@@ -609,6 +609,39 @@ function ensureTsConfig(cwd: string) {
 
   writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`, 'utf-8');
   console.log('  created tsconfig.json for Node.js + Vite types');
+}
+
+function shouldAutoCreateTsConfig(cwd: string): boolean {
+  if (existsSync(join(cwd, 'tsconfig.json'))) return true;
+
+  // Only auto-create tsconfig when the project appears to actually use TypeScript.
+  return hasTypeScriptSource(cwd, 0);
+}
+
+function hasTypeScriptSource(dir: string, depth: number): boolean {
+  if (depth > 5) return false;
+
+  let entries: Dirent<string>[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true, encoding: 'utf8' });
+  } catch {
+    return false;
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      if (hasTypeScriptSource(join(dir, entry.name), depth + 1)) return true;
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+    if (!entry.name.endsWith('.ts') && !entry.name.endsWith('.tsx')) continue;
+    if (entry.name.endsWith('.d.ts')) continue;
+    return true;
+  }
+
+  return false;
 }
 
 function runInit(cwd: string) {

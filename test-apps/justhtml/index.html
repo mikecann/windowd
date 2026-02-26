@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>windowd justhtml</title>
+  </head>
+  <body>
+    Because who needs Typescript? Try changing the source, HMR still works
+    
+    <pre id="info"></pre>
+    <script type="module">
+      import os from 'node:os';
+      document.getElementById('info').textContent =
+        `Running on ${os.platform()} with Node ${process.version}`;
+    </script>
+  </body>
+</html>

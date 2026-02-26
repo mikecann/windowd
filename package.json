@@ -25,14 +25,7 @@
     "assets"
   ],
   "scripts": {
-    "test-app:basics": "cd test-apps/basics && bun run ../../bin/cli.ts",
-    "test-app:debug": "cd test-apps/basics && bun run ../../bin/cli.ts --debug",
-    "test-app:prod": "cd test-apps/basics && bun run ../../bin/cli.ts",
-    "test-app:config": "cd test-apps/config-demo && bun run ../../bin/cli.ts",
-    "test:html": "node test-webview.cjs html",
-    "test:data": "node test-webview.cjs data",
-    "test:external": "node test-webview.cjs external",
-    "test:local": "node test-webview.cjs local"
+    "test-app": "bun ./scripts/test-app.ts"
   },
   "engines": {
     "node": ">=18"
