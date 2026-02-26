@@ -1,0 +1,10 @@
+{
+  "name": "windowd-test-deps",
+  "private": true,
+  "dependencies": {
+    "canvas-confetti": "^1.9.4"
+  },
+  "devDependencies": {
+    "@types/nw.js": "^0.92.0"
+  }
+}

@@ -8,11 +8,14 @@ const forwardedArgs = process.argv.slice(3);
 const appMap: Record<string, string> = {
   basics: 'test-apps/basics',
   config: 'test-apps/config',
+  deps: 'test-apps/deps',
   justhtml: 'test-apps/justhtml',
 };
 
+const names = Object.keys(appMap).join('|');
+
 if (!appArg || !(appArg in appMap)) {
-  console.error('Usage: bun run test-app <basics|config|justhtml> [windowd args]');
+  console.error(`Usage: bun run test-app <${names}> [windowd args]`);
   process.exit(1);
 }
 
@@ -21,6 +24,17 @@ const appDir = resolve(import.meta.dir, '..', appMap[appArg]);
 if (!existsSync(appDir)) {
   console.error(`Test app directory not found: ${appDir}`);
   process.exit(1);
+}
+
+if (existsSync(resolve(appDir, 'package.json')) && !existsSync(resolve(appDir, 'node_modules'))) {
+  console.log('  installing dependencies...');
+  Bun.spawnSync({
+    cmd: ['bun', 'install'],
+    cwd: appDir,
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
 }
 
 const proc = Bun.spawn({

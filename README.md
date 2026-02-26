@@ -171,4 +171,5 @@ bun run test-app <name>
 |---|---|---|
 | `basics` | `bun run test-app basics` | React + TypeScript, `node:fs` directory listing, Vite asset imports, NW.js window APIs (minimize, maximize, always-on-top, child windows) |
 | `config` | `bun run test-app config` | Frameless window via `windowd-config.ts`, shows how to customize NW.js settings |
+| `deps` | `bun run test-app deps` | Third-party npm package (`canvas-confetti`) alongside Node.js APIs, has its own `package.json` |
 | `justhtml` | `bun run test-app justhtml` | Plain HTML with zero config, no TypeScript, no `package.json`, HMR still works |

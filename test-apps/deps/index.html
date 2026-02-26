@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>windowd deps</title>
+    <style>
+      * { margin: 0; box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        background: #090b16;
+        color: #e2e8f0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+      section {
+        background: #12162b;
+        border: 1px solid #2a3152;
+        border-radius: 14px;
+        padding: 24px;
+        width: min(600px, 90vw);
+        display: grid;
+        gap: 16px;
+      }
+      h1 { color: #a78bfa; }
+      p { color: #9aa7c2; }
+      button {
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: 1px solid #3e4b76;
+        background: #2b3354;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+        justify-self: start;
+      }
+      button:hover { background: #3b4574; }
+      pre {
+        background: #0d1025;
+        border: 1px solid #2a3152;
+        border-radius: 10px;
+        padding: 14px;
+        font-size: 13px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <section>
+      <h1>deps</h1>
+      <p>Third-party npm packages work alongside Node.js APIs in the renderer.</p>
+      <button id="btn">Celebrate</button>
+      <pre id="info"></pre>
+    </section>
+    <script type="module">
+      import confetti from 'canvas-confetti';
+      import os from 'node:os';
+
+      document.getElementById('info').textContent = JSON.stringify({
+        platform: os.platform(),
+        arch: os.arch(),
+        hostname: os.hostname(),
+        cpus: os.cpus().length,
+        memory: `${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`,
+      }, null, 2);
+
+      document.getElementById('btn').addEventListener('click', () => {
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.7 } });
+      });
+    </script>
+  </body>
+</html>
