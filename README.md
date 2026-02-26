@@ -46,7 +46,7 @@ That's it. You get a desktop window with Vite HMR and full Node.js APIs availabl
 
 ## Using Node.js in the renderer
 
-Yeah, this isn't the safest thing in the world ⚠️ but so long as you're running your own trusted code then YOLO 🤷‍♂️ What it does get you is all the power of a desktop app and all the power of a web app, all in one. Read files, spawn processes, grab system info, then render it all with React:
+Yeah, this isn't the safest thing in the world but so long as you're running your own trusted code then YOLO 🤷‍♂️ What it does get you is all the power of a desktop app and all the power of a web app, all in one. Read files, spawn processes, grab system info, then render it all with React:
 
 ```tsx
 import { readFileSync } from 'node:fs';
