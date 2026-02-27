@@ -237,9 +237,19 @@ interface WindowOptions {
   onReady?: () => void;
 }
 
+function cleanupTempDir(dir: string, label: string) {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'EBUSY' || code === 'EPERM' || code === 'ENOTEMPTY') return;
+    console.warn(`  warning: failed to remove ${label} temp dir: ${String(error)}`);
+  }
+}
+
 async function openWindow({ url, title, width, height, debug, nwBin, projectDir, windowThisConfig, capture, appLogPath, onReady }: WindowOptions) {
   const closeSignal = await createCloseSignalServer();
-  const hostDir = createNwHostApp({
+  const { hostDir, userDataDir } = createNwHostApp({
     url,
     title,
     width,
@@ -252,7 +262,7 @@ async function openWindow({ url, title, width, height, debug, nwBin, projectDir,
     capture,
     appLogPath,
   });
-  const nw = spawn(nwBin, [hostDir], {
+  const nw = spawn(nwBin, [`--user-data-dir=${userDataDir}`, hostDir], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
@@ -271,7 +281,8 @@ async function openWindow({ url, title, width, height, debug, nwBin, projectDir,
         // ignore cleanup errors
       }
     }
-    rmSync(hostDir, { recursive: true, force: true });
+    cleanupTempDir(hostDir, 'host');
+    cleanupTempDir(userDataDir, 'profile');
   }
 }
 
@@ -622,6 +633,11 @@ interface NwHostOptions extends WindowOptions {
   closeSignalUrl: string;
 }
 
+interface NwHostAppPaths {
+  hostDir: string;
+  userDataDir: string;
+}
+
 function createNwHostApp({
   url,
   title,
@@ -633,8 +649,9 @@ function createNwHostApp({
   windowThisConfig,
   capture,
   appLogPath,
-}: NwHostOptions): string {
+}: NwHostOptions): NwHostAppPaths {
   const hostDir = mkdtempSync(join(tmpdir(), 'windowd-nw-'));
+  const userDataDir = mkdtempSync(join(tmpdir(), 'windowd-nw-profile-'));
   const startUrl = new URL(url);
   startUrl.searchParams.set('windowThisProjectDir', projectDir);
   const nodeMainPath = join(hostDir, 'windowd-node-main.js');
@@ -690,7 +707,7 @@ function createNwHostApp({
 
   writeFileSync(join(hostDir, 'package.json'), JSON.stringify(manifest, null, 2), 'utf-8');
   writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl, resolvedIconDest, capture ?? null, appLogPath ?? null), 'utf-8');
-  return hostDir;
+  return { hostDir, userDataDir };
 }
 
 function buildPreloadJs(appLogPath: string): string {
