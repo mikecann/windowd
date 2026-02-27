@@ -464,6 +464,8 @@ function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
 
   const configContents = `
 import path from "node:path";
+import { createRequire as _createRequire } from "node:module";
+const _require = _createRequire(import.meta.url);
 ${reactPluginImportLine}
 function windowThisNodeBuiltins() {
   const virtualPrefix = '\\0windowd-node:';
@@ -477,6 +479,12 @@ function windowThisNodeBuiltins() {
     load(id) {
       if (!id.startsWith(virtualPrefix)) return null;
       const nodeSpecifier = id.slice(virtualPrefix.length);
+      let namedExports = '';
+      try {
+        const mod = _require(nodeSpecifier);
+        const keys = Object.keys(mod).filter(k => k !== 'default' && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
+        namedExports = keys.map(k => \`export const \${k} = mod.\${k};\`).join('\\n');
+      } catch {}
       return \`
 const requireFn = globalThis.require;
 if (typeof requireFn !== "function") {
@@ -484,6 +492,7 @@ if (typeof requireFn !== "function") {
 }
 const mod = requireFn(\${JSON.stringify(nodeSpecifier)});
 export default mod;
+\${namedExports}
 \`;
     },
   };
