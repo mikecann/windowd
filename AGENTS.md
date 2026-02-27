@@ -31,9 +31,14 @@ Requirements for the workflow:
 
 ## nw dependency - must be pinned to exact SDK version
 
-`"nw": "0.108.0-sdk"` - no caret, no range. Using `^0.108.0-sdk` lets npm resolve to the
-higher stable release `0.108.0` (non-SDK) because stable beats prerelease in semver range
+`"nw": "0.104.1-sdk"` - no caret, no range. Using `^0.104.1-sdk` lets npm resolve to the
+higher stable release `0.104.1` (non-SDK) because stable beats prerelease in semver range
 resolution. That means the SDK DevTools binary never gets installed and `findpath` fails.
+
+**Do not bump past 0.104.1-sdk.** Native window menu bars (`win.menu = menubar`) are
+completely broken from NW.js 0.105.0 onwards - the menu silently fails to render.
+This is a confirmed open bug (https://github.com/nwjs/nw.js/issues/8317) with no fix as of
+Feb 2026. When that issue is resolved, test menus before bumping.
 
 When bumping to a new NW.js version, update the exact pin in `package.json` and test.
 

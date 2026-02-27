@@ -124,6 +124,22 @@ function App() {
   };
 
   useEffect(() => {
+    const win = nw.Window.get();
+    const menubar = new nw.Menu({ type: "menubar" });
+
+    const fileMenu = new nw.Menu();
+    fileMenu.append(new nw.MenuItem({ label: "DevTools", click: () => win.showDevTools() }));
+    fileMenu.append(new nw.MenuItem({ type: "separator" }));
+    fileMenu.append(new nw.MenuItem({ label: "Exit", click: () => nw.App.quit() }));
+
+    menubar.append(new nw.MenuItem({ label: "File", submenu: fileMenu }));
+
+    win.menu = menubar;
+
+    return () => { win.menu = null; };
+  }, []);
+
+  useEffect(() => {
     return () => {
       const child = childWindowRef.current;
       if (!child) return;
@@ -243,3 +259,4 @@ function App() {
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
 createRoot(root).render(<App />);
+

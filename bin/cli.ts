@@ -851,31 +851,11 @@ function buildNodeMainJs(
       }
     };
 
-    const menu = new nwApi.Menu();
-    menu.append(new nwApi.MenuItem({
-      label: 'Inspect / DevTools',
-      click: openDevTools,
-    }));
-
     const attachToDocument = () => {
       const doc = win.window && win.window.document;
       if (!doc) return;
       appendAppLog('document available, attaching handlers');
 
-      const onContextMenu = (event) => {
-        event.preventDefault();
-        const x = typeof event.x === 'number' ? event.x : event.clientX;
-        const y = typeof event.y === 'number' ? event.y : event.clientY;
-        try {
-          menu.popup(x, y);
-        } catch (error) {
-          console.warn('[windowd] Context menu failed, opening DevTools directly.', error);
-          openDevTools();
-        }
-        return false;
-      };
-
-      doc.addEventListener('contextmenu', onContextMenu, true);
       win.window.addEventListener('keydown', (event) => {
         const openByF12 = event.key === 'F12';
         const openByShortcut = (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'i';

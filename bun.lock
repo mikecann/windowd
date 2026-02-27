@@ -8,7 +8,7 @@
         "@inquirer/prompts": "^8.3.0",
         "@types/nw.js": "^0.92.0",
         "@vitejs/plugin-react": "^5.1.4",
-        "nw": "0.108.0-sdk",
+        "nw": "0.104.1-sdk",
         "react": "^19.2.4",
         "react-dom": "^19.2.4",
         "vite": "^7.0.0",
@@ -393,7 +393,7 @@
 
     "node-releases": ["node-releases@2.0.27", "", {}, "sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA=="],
 
-    "nw": ["nw@0.108.0-sdk", "", { "dependencies": { "axios": "^1.13.5", "commander": "^14.0.3", "semver": "^7.7.4", "tar": "^7.5.9", "yauzl-promise": "^4.0.0" }, "bin": { "nw": "src/cli.js" } }, "sha512-luX3hfNMsqqVx5EXfXvpqs8fqT8XrobBHbW5jFLSg6kkISNlC7x9U//yNx4VcR/zBjq6XC01BguT9/uZNBryeQ=="],
+    "nw": ["nw@0.104.1-sdk", "", { "dependencies": { "axios": "^1.12.2", "commander": "^14.0.1", "semver": "^7.7.2", "tar": "^7.5.1", "yauzl-promise": "^4.0.0" }, "bin": { "nw": "src/cli.js" } }, "sha512-LIvTP1yeBfOVixiRek3CzEpsoNsZYJLI4fjcleRERCfKZUZMwP6gMecWIZaLTmKCYw4fhtS1RjGIL8IsNi1zhg=="],
 
     "object-keys": ["object-keys@1.1.1", "", {}, "sha512-NuAESUOUMrlIXOfHKzD6bpPu3tYt3xvjNdRIQ+FeT0lNb4K8WR70CaDxhuNguS2XG+GjkyMwOzsN5ZktImfhLA=="],
 
