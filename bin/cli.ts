@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, type Dirent } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename, dirname, extname } from 'node:path';
 import { get as httpGet, type IncomingMessage } from 'node:http';
@@ -11,6 +11,11 @@ import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { select } from '@inquirer/prompts';
 import { findpath as nwFindpath } from 'nw';
+import {
+  parseArgs, getTitle, getIconPath, hasTypeScriptSource, validateExistingTsConfig,
+  VITE_CONFIGS, WINDOW_THIS_CONFIGS, REQUIRED_TSCONFIG_OPTIONS, REQUIRED_TSCONFIG_TYPES,
+  type WindowThisConfig,
+} from '../src/lib.ts';
 
 const _require = createRequire(import.meta.url);
 
@@ -23,55 +28,55 @@ function resolveOwnPackageDir(packageName: string): string | null {
   }
 }
 
-const VITE_CONFIGS = [
-  'vite.config.js',
-  'vite.config.ts',
-  'vite.config.mjs',
-  'vite.config.cjs',
-];
-
-const WINDOW_THIS_CONFIGS = [
-  'windowd-config.ts',
-  'windowd-config.js',
-  'windowd-config.mjs',
-  'windowd-config.cjs',
-];
-
-const REQUIRED_TSCONFIG_OPTIONS: Record<string, unknown> = {
-  target: 'ESNext',
-  module: 'ESNext',
-  moduleResolution: 'Bundler',
-  jsx: 'react-jsx',
-  noEmit: true,
-  skipLibCheck: true,
-};
-
-const REQUIRED_TSCONFIG_TYPES = ['node', 'vite/client', 'nw.js'];
-
-interface Args {
-  width:   number;
-  height:  number;
-  title?:  string;
-  debug:   boolean;
-  init:    boolean;
-  version: boolean;
-  help:    boolean;
-}
-
-interface WindowThisConfig {
-  nw?: {
-    window?: Record<string, unknown>;
-    nodeRemote?: string[] | string;
-    chromiumArgs?: string;
-    manifest?: Record<string, unknown>;
-  };
-}
-
 const args = parseArgs();
 const binDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgJson = JSON.parse(readFileSync(join(binDir, '../package.json'), 'utf-8'));
-const SUPPORTED_ICON_EXTS = new Set(['.png', '.ico', '.jpg', '.jpeg']);
-const DEFAULT_ICON_PATH   = join(binDir, '../assets/default-icon.png');
+const DEFAULT_ICON_PATH = join(binDir, '../assets/default-icon.png');
+const artifactsDir = args.artifacts ?? args.capture;
+const debugArtifacts = artifactsDir ? setupDebugArtifacts(artifactsDir) : null;
+
+interface DebugArtifacts {
+  dir: string;
+  appLogPath: string;
+}
+
+function setupDebugArtifacts(dir: string): DebugArtifacts {
+  mkdirSync(dir, { recursive: true });
+
+  const cliLogPath = join(dir, 'cli.log');
+  const appLogPath = join(dir, 'app.log');
+  writeFileSync(cliLogPath, '', 'utf-8');
+  writeFileSync(appLogPath, '', 'utf-8');
+
+  const stamp = () => new Date().toISOString();
+  const asText = (chunk: unknown) => {
+    if (typeof chunk === 'string') return chunk;
+    if (Buffer.isBuffer(chunk)) return chunk.toString('utf-8');
+    return String(chunk);
+  };
+  const append = (stream: 'stdout' | 'stderr', chunk: unknown) => {
+    appendFileSync(cliLogPath, `[${stamp()}] [${stream}] ${asText(chunk)}`);
+  };
+
+  const origStdoutWrite = process.stdout.write.bind(process.stdout);
+  const origStderrWrite = process.stderr.write.bind(process.stderr);
+  process.stdout.write = ((chunk: unknown, ...rest: unknown[]) => {
+    append('stdout', chunk);
+    return (origStdoutWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => {
+    append('stderr', chunk);
+    return (origStderrWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stderr.write;
+
+  process.on('exit', () => {
+    process.stdout.write = origStdoutWrite as typeof process.stdout.write;
+    process.stderr.write = origStderrWrite as typeof process.stderr.write;
+  });
+
+  process.stdout.write(`  debug artifacts -> ${dir}\n`);
+  return { dir, appLogPath };
+}
 
 // ─── terminal status line ─────────────────────────────────────────────────────
 
@@ -115,6 +120,8 @@ if (args.help) {
     --height <n>   Window height (default: 800)
     --title  <s>   Window title  (default: auto-detected)
     --debug        Enable extra NW.js logging
+    --capture <d>  Capture screenshot to <d>, then exit
+    --artifacts <d> Write CLI + app debug logs to <d>
     --init         Create/check tsconfig.json for Node + Vite types
     --version      Show version
     --help         Show this help
@@ -159,7 +166,7 @@ async function main() {
   setStatus('starting vite...');
 
   try {
-    const vite = await startVite(cwd, port, viteConfig.configPath);
+    const vite = await startVite(cwd, port, viteConfig.configPath, !!debugArtifacts);
     const url = `http://127.0.0.1:${port}`;
 
     setStatus('opening window...');
@@ -173,6 +180,8 @@ async function main() {
       nwBin,
       projectDir: cwd,
       windowThisConfig,
+      capture: args.capture,
+      appLogPath: debugArtifacts?.appLogPath,
       onReady: () => setStatus(`${title}    ${url}`, true),
     });
 
@@ -186,13 +195,15 @@ async function main() {
 
 // ─── vite ────────────────────────────────────────────────────────────────────
 
-async function startVite(cwd: string, port: number, configPath: string): Promise<ViteProcess> {
+async function startVite(cwd: string, port: number, configPath: string, streamOutput: boolean): Promise<ViteProcess> {
   const vite = spawn(
     'bun',
     ['x', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--config', configPath],
     { cwd, stdio: ['ignore', 'pipe', 'pipe'] }
   );
-  vite.stdout.on('data', () => { /* keep pipe drained */ });
+  vite.stdout.on('data', (chunk: Buffer | string) => {
+    if (streamOutput) process.stdout.write(chunk);
+  });
   vite.stderr.on('data', (chunk: Buffer | string) => {
     process.stderr.write(chunk);
   });
@@ -221,10 +232,12 @@ interface WindowOptions {
   nwBin:  string;
   projectDir: string;
   windowThisConfig: WindowThisConfig;
+  capture?: string;
+  appLogPath?: string;
   onReady?: () => void;
 }
 
-async function openWindow({ url, title, width, height, debug, nwBin, projectDir, windowThisConfig, onReady }: WindowOptions) {
+async function openWindow({ url, title, width, height, debug, nwBin, projectDir, windowThisConfig, capture, appLogPath, onReady }: WindowOptions) {
   const closeSignal = await createCloseSignalServer();
   const hostDir = createNwHostApp({
     url,
@@ -236,11 +249,15 @@ async function openWindow({ url, title, width, height, debug, nwBin, projectDir,
     projectDir,
     closeSignalUrl: closeSignal.url,
     windowThisConfig,
+    capture,
+    appLogPath,
   });
   const nw = spawn(nwBin, [hostDir], {
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
+  nw.stdout?.on('data', (chunk: Buffer | string) => process.stdout.write(chunk));
+  nw.stderr?.on('data', (chunk: Buffer | string) => process.stderr.write(chunk));
   onReady?.();
 
   try {
@@ -304,7 +321,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
   const title = basename(cwd);
   setStatus('starting vite...');
   try {
-    const vite = await startVite(cwd, port, viteConfig.configPath);
+    const vite = await startVite(cwd, port, viteConfig.configPath, !!debugArtifacts);
     const url = `http://127.0.0.1:${port}`;
 
     setStatus('opening window...');
@@ -317,6 +334,7 @@ async function scaffold(cwd: string, template: 'react-ts' | 'vanilla') {
       nwBin,
       projectDir: cwd,
       windowThisConfig,
+      appLogPath: debugArtifacts?.appLogPath,
       onReady: () => setStatus(`${title}    ${url}`, true),
     });
 
@@ -377,55 +395,6 @@ function getEphemeralPort(host = '127.0.0.1'): Promise<number> {
   });
 }
 
-function getTitle(cwd: string): string {
-  try {
-    const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf-8'));
-    if (pkg.windowd?.title) return pkg.windowd.title;
-    if (pkg.displayName)                return pkg.displayName;
-    if (pkg.name)                       return pkg.name;
-  } catch { /* ignore */ }
-
-  try {
-    const html = readFileSync(join(cwd, 'index.html'), 'utf-8');
-    const m = html.match(/<title>(.*?)<\/title>/i);
-    if (m?.[1]) return m[1];
-  } catch { /* ignore */ }
-
-  return basename(cwd);
-}
-
-function getIconPath(cwd: string): string | null {
-  // 1. Check index.html for <link rel="icon"> or <link rel="shortcut icon">
-  try {
-    const html = readFileSync(join(cwd, 'index.html'), 'utf-8');
-    const m =
-      html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i) ??
-      html.match(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["'](?:shortcut )?icon["']/i);
-    if (m?.[1]) {
-      const href = m[1];
-      if (!href.startsWith('data:') && !href.startsWith('http')) {
-        const rel = href.startsWith('/') ? href.slice(1) : href;
-        const abs = join(cwd, rel);
-        if (SUPPORTED_ICON_EXTS.has(extname(abs).toLowerCase()) && existsSync(abs)) {
-          return abs;
-        }
-      }
-    }
-  } catch { /* ignore */ }
-
-  // 2. Fallback - check common favicon files in project root
-  for (const name of ['favicon.ico', 'favicon.png', 'favicon.jpg']) {
-    const abs = join(cwd, name);
-    if (existsSync(abs)) return abs;
-  }
-  for (const name of ['public/favicon.ico', 'public/favicon.png', 'public/favicon.jpg']) {
-    const abs = join(cwd, name);
-    if (existsSync(abs)) return abs;
-  }
-
-  return null;
-}
-
 interface AugmentedViteConfig {
   tempDir: string;
   configPath: string;
@@ -458,46 +427,22 @@ function createAugmentedViteConfig(cwd: string): AugmentedViteConfig {
     }
   }
 
+  // Transpile the plugin TS to JS and write it alongside the temp config so Vite
+  // can load it via Node's ESM loader (which doesn't handle .ts natively).
+  const pluginTsPath = join(binDir, '..', 'src', 'plugins', 'node-builtins.ts');
+  const pluginTs = readFileSync(pluginTsPath, 'utf-8');
+  const transpiler = new Bun.Transpiler({ loader: 'ts' });
+  const pluginJs = transpiler.transformSync(pluginTs);
+  writeFileSync(join(tempDir, 'node-builtins.mjs'), pluginJs, 'utf-8');
+
   const reactPluginImportLine = shouldInjectReactPlugin && reactPluginPath
     ? `import react from ${JSON.stringify(pathToFileURL(reactPluginPath).href)};`
     : '';
 
   const configContents = `
 import path from "node:path";
-import { createRequire as _createRequire } from "node:module";
-const _require = _createRequire(import.meta.url);
+import { windowThisNodeBuiltins } from "./node-builtins.mjs";
 ${reactPluginImportLine}
-function windowThisNodeBuiltins() {
-  const virtualPrefix = '\\0windowd-node:';
-  return {
-    name: 'windowd-nw-node-builtins',
-    enforce: 'pre',
-    resolveId(id) {
-      if (id.startsWith('node:')) return virtualPrefix + id;
-      return null;
-    },
-    load(id) {
-      if (!id.startsWith(virtualPrefix)) return null;
-      const nodeSpecifier = id.slice(virtualPrefix.length);
-      let namedExports = '';
-      try {
-        const mod = _require(nodeSpecifier);
-        const keys = Object.keys(mod).filter(k => k !== 'default' && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
-        namedExports = keys.map(k => \`export const \${k} = mod.\${k};\`).join('\\n');
-      } catch {}
-      return \`
-const requireFn = globalThis.require;
-if (typeof requireFn !== "function") {
-  throw new Error("windowd expected Node integration, but globalThis.require is missing.");
-}
-const mod = requireFn(\${JSON.stringify(nodeSpecifier)});
-export default mod;
-\${namedExports}
-\`;
-    },
-  };
-}
-
 const projectDir = ${JSON.stringify(cwd)};
 const defaultFsAllow = [projectDir, path.resolve(projectDir, "..")];
 const userConfigUrl = ${JSON.stringify(userConfigUrl)};
@@ -627,32 +572,6 @@ function shouldAutoCreateTsConfig(cwd: string): boolean {
   return hasTypeScriptSource(cwd, 0);
 }
 
-function hasTypeScriptSource(dir: string, depth: number): boolean {
-  if (depth > 5) return false;
-
-  let entries: Dirent<string>[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, encoding: 'utf8' });
-  } catch {
-    return false;
-  }
-
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
-      if (hasTypeScriptSource(join(dir, entry.name), depth + 1)) return true;
-      continue;
-    }
-
-    if (!entry.isFile()) continue;
-    if (!entry.name.endsWith('.ts') && !entry.name.endsWith('.tsx')) continue;
-    if (entry.name.endsWith('.d.ts')) continue;
-    return true;
-  }
-
-  return false;
-}
-
 function runInit(cwd: string) {
   ensureNwTypes(cwd);
 
@@ -699,71 +618,6 @@ function ensureNwTypes(cwd: string) {
   }
 }
 
-function validateExistingTsConfig(tsconfigPath: string):
-  | { ok: true; missing: string[] }
-  | { ok: false; error: string } {
-  try {
-    const raw = readFileSync(tsconfigPath, 'utf-8');
-    const parsed = JSON.parse(raw) as { compilerOptions?: Record<string, unknown> };
-    const compilerOptions = parsed.compilerOptions ?? {};
-    const missing: string[] = [];
-
-    for (const [key, expected] of Object.entries(REQUIRED_TSCONFIG_OPTIONS)) {
-      if (!isExpectedTsConfigValue(key, compilerOptions[key], expected)) {
-        missing.push(`compilerOptions.${key} should be ${JSON.stringify(expected)}`);
-      }
-    }
-
-    const types = Array.isArray(compilerOptions.types)
-      ? compilerOptions.types.filter((v): v is string => typeof v === 'string')
-      : [];
-    for (const typeName of REQUIRED_TSCONFIG_TYPES) {
-      if (!types.includes(typeName)) {
-        missing.push(`compilerOptions.types should include "${typeName}"`);
-      }
-    }
-
-    return { ok: true, missing };
-  } catch (error) {
-    return { ok: false, error: String(error) };
-  }
-}
-
-function isExpectedTsConfigValue(key: string, actual: unknown, expected: unknown): boolean {
-  if (typeof actual === 'string' && typeof expected === 'string') {
-    if (key === 'target' || key === 'module' || key === 'moduleResolution') {
-      return actual.toLowerCase() === expected.toLowerCase();
-    }
-  }
-  return actual === expected;
-}
-
-function parseArgs(): Args {
-  const argv = process.argv.slice(2);
-  const result: Partial<Args> = {};
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if      (arg === '--version' || arg === '-v')                      result.version = true;
-    else if (arg === '--help'    || arg === '-h')                      result.help    = true;
-    else if (arg === '--debug'   || arg === '-d')                      result.debug   = true;
-    else if (arg === '--init'    || arg === '-i')                      result.init    = true;
-    else if ((arg === '--width'  || arg === '-W') && argv[i + 1])     result.width   = parseInt(argv[++i], 10);
-    else if ((arg === '--height' || arg === '-H') && argv[i + 1])     result.height  = parseInt(argv[++i], 10);
-    else if ((arg === '--title'  || arg === '-t') && argv[i + 1])     result.title   = argv[++i];
-  }
-
-  return {
-    width:   result.width   ?? 1280,
-    height:  result.height  ?? 800,
-    debug:   result.debug   ?? false,
-    init:    result.init    ?? false,
-    version: result.version ?? false,
-    help:    result.help    ?? false,
-    title:   result.title,
-  };
-}
-
 interface NwHostOptions extends WindowOptions {
   closeSignalUrl: string;
 }
@@ -777,7 +631,8 @@ function createNwHostApp({
   projectDir,
   closeSignalUrl,
   windowThisConfig,
-  // nwBin not needed here - used by caller
+  capture,
+  appLogPath,
 }: NwHostOptions): string {
   const hostDir = mkdtempSync(join(tmpdir(), 'windowd-nw-'));
   const startUrl = new URL(url);
@@ -822,16 +677,108 @@ function createNwHostApp({
 
   applyUserManifestOverrides(manifest, windowThisConfig.nw?.manifest);
 
+  if (appLogPath) {
+    writeFileSync(join(hostDir, 'windowd-preload.js'), buildPreloadJs(appLogPath), 'utf-8');
+    const existingInject = manifest.inject_js_start;
+    if (typeof existingInject === 'string' && existingInject.trim().length > 0) {
+      console.warn('  overriding nw.manifest.inject_js_start while --artifacts is enabled');
+    } else {
+      // no-op, explicit branch keeps intent obvious
+    }
+    manifest.inject_js_start = 'windowd-preload.js';
+  }
+
   writeFileSync(join(hostDir, 'package.json'), JSON.stringify(manifest, null, 2), 'utf-8');
-  writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl, resolvedIconDest), 'utf-8');
+  writeFileSync(nodeMainPath, buildNodeMainJs(closeSignalUrl, resolvedIconDest, capture ?? null, appLogPath ?? null), 'utf-8');
   return hostDir;
 }
 
-function buildNodeMainJs(closeSignalUrl: string, iconPath: string | null): string {
+function buildPreloadJs(appLogPath: string): string {
+  return `
+(() => {
+  const __appLogPath = ${JSON.stringify(appLogPath)};
+  const fs = require('fs');
+  const pathMod = require('path');
+  const MAX_BYTES = 8 * 1024 * 1024;
+
+  const safeStringify = (value, seen = new WeakSet()) => {
+    if (typeof value === 'string') return value;
+    if (value === null || value === undefined) return String(value);
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+    if (typeof value === 'function') return '[function]';
+    if (typeof value === 'symbol') return value.toString();
+    if (typeof value !== 'object') return String(value);
+    if (seen.has(value)) return '[circular]';
+    seen.add(value);
+    try {
+      return JSON.stringify(value, (_k, v) => {
+        if (typeof v === 'object' && v !== null) {
+          if (seen.has(v)) return '[circular]';
+          seen.add(v);
+        }
+        return v;
+      });
+    } catch {
+      return String(value);
+    }
+  };
+
+  const appendLog = (level, args) => {
+    try {
+      fs.mkdirSync(pathMod.dirname(__appLogPath), { recursive: true });
+      const text = args.map((arg) => safeStringify(arg)).join(' ');
+      const line = '[' + new Date().toISOString() + '] [' + level + '] ' + text + '\\\\n';
+      fs.appendFileSync(__appLogPath, line);
+      const stat = fs.statSync(__appLogPath);
+      if (stat.size > MAX_BYTES) {
+        const all = fs.readFileSync(__appLogPath, 'utf-8');
+        const tail = all.slice(Math.floor(all.length / 2));
+        fs.writeFileSync(__appLogPath, '[windowd] app.log truncated due to size\\\\n' + tail, 'utf-8');
+      }
+    } catch {}
+  };
+
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    const original = typeof console[level] === 'function' ? console[level].bind(console) : null;
+    console[level] = (...args) => {
+      appendLog(level, args);
+      if (original) original(...args);
+    };
+  }
+
+  addEventListener('error', (event) => {
+    appendLog('error', [event.message || 'window error']);
+  });
+  addEventListener('unhandledrejection', (event) => {
+    appendLog('error', [String(event.reason || event)]);
+  });
+
+  appendLog('info', ['[windowd] preload console hook installed']);
+})();
+`;
+}
+
+function buildNodeMainJs(
+  closeSignalUrl: string,
+  iconPath: string | null,
+  captureDir: string | null,
+  appLogPath: string | null,
+): string {
   return `
 (() => {
   const closeSignalUrl = ${JSON.stringify(closeSignalUrl)};
   const iconPath = ${JSON.stringify(iconPath)};
+  const __captureDir = ${JSON.stringify(captureDir)};
+  const __appLogPath = ${JSON.stringify(appLogPath)};
+  const fs = require('fs');
+  const pathMod = require('path');
+  const appendAppLog = (line) => {
+    if (!__appLogPath) return;
+    try {
+      fs.mkdirSync(pathMod.dirname(__appLogPath), { recursive: true });
+      fs.appendFileSync(__appLogPath, line + '\\n');
+    } catch {}
+  };
   const signalClose = () => {
     try {
       const http = require('http');
@@ -844,20 +791,28 @@ function buildNodeMainJs(closeSignalUrl: string, iconPath: string | null): strin
   const nwApi = typeof globalThis.nw !== 'undefined' ? globalThis.nw : null;
   if (!nwApi || !nwApi.Window || !nwApi.Window.get) {
     console.warn('[windowd] NW API unavailable in node-main.');
+    appendAppLog('NW API unavailable in node-main');
     return;
   }
+  appendAppLog('node-main started');
 
-  const withWindow = (fn) => {
-    try {
-      const win = nwApi.Window.get();
-      if (!win) return;
-      fn(win);
-    } catch {
-      // ignore
-    }
-  };
+  const waitForWindow = (timeoutMs = 15000) => new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = () => {
+      try {
+        const win = nwApi.Window.get();
+        if (win) return resolve(win);
+      } catch {}
+      if (Date.now() - started > timeoutMs) {
+        reject(new Error('No current window after waiting'));
+        return;
+      }
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
 
-  const installHandlers = () => withWindow((win) => {
+  const installHandlers = (win) => {
     if (iconPath && typeof win.setIcon === 'function') {
       try { win.setIcon(iconPath); } catch {}
     }
@@ -888,6 +843,7 @@ function buildNodeMainJs(closeSignalUrl: string, iconPath: string | null): strin
     const attachToDocument = () => {
       const doc = win.window && win.window.document;
       if (!doc) return;
+      appendAppLog('document available, attaching handlers');
 
       const onContextMenu = (event) => {
         event.preventDefault();
@@ -934,9 +890,7 @@ function buildNodeMainJs(closeSignalUrl: string, iconPath: string | null): strin
         process.exit(0);
       } catch {}
     });
-  });
-
-  installHandlers();
+  };
 
   if (nwApi.App && typeof nwApi.App.on === 'function') {
     nwApi.App.on('window-all-closed', () => {
@@ -949,6 +903,51 @@ function buildNodeMainJs(closeSignalUrl: string, iconPath: string | null): strin
       } catch {}
     });
   }
+
+  waitForWindow().then((win) => {
+    appendAppLog('window became available');
+    installHandlers(win);
+
+    if (!__captureDir) return;
+    const captureErrors = [];
+    const startCapture = () => {
+      appendAppLog('capture requested');
+      try {
+        fs.mkdirSync(__captureDir, { recursive: true });
+      } catch {}
+      setTimeout(() => {
+        const doc = win.window && win.window.document;
+        const title = doc ? doc.title : '';
+        if (win.window) {
+          win.window.addEventListener('error', (e) => captureErrors.push(e.message || String(e)));
+          win.window.addEventListener('unhandledrejection', (e) => captureErrors.push(String(e.reason || e)));
+        }
+        win.capturePage((buffer) => {
+          appendAppLog('capturePage callback received');
+          try {
+            fs.writeFileSync(pathMod.join(__captureDir, 'screenshot.png'), buffer);
+            fs.writeFileSync(pathMod.join(__captureDir, 'result.json'), JSON.stringify({
+              title,
+              url: (win.window && win.window.location && win.window.location.href) || '',
+              consoleErrors: captureErrors,
+              capturedAt: new Date().toISOString(),
+            }, null, 2));
+          } catch (err) {
+            appendAppLog('capture write failed: ' + err);
+          }
+          signalClose();
+          try { win.close(true); } catch {}
+          try { nwApi.App.quit(); } catch {}
+          try { process.exit(0); } catch {}
+        }, { format: 'png', datatype: 'buffer' });
+      }, 2000);
+    };
+
+    if (win.window && win.window.document) startCapture();
+    else win.on('loaded', startCapture);
+  }).catch((err) => {
+    appendAppLog('waitForWindow failed: ' + err);
+  });
 })();
 `;
 }

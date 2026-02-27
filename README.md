@@ -92,6 +92,8 @@ npx windowd                            # run in current directory
 npx windowd --width 1440 --height 900  # custom window size
 npx windowd --title "My App"           # custom window title
 npx windowd --debug                    # extra NW.js logging
+npx windowd --artifacts .windowd/logs  # write CLI + app logs
+npx windowd --capture .windowd/run1    # screenshot + result.json, then exit
 npx windowd --init                     # create/validate tsconfig.json
 npx windowd --version
 npx windowd --help
@@ -152,6 +154,36 @@ windowd picks these up automatically so the window feels native without extra co
 - `F12` or `Ctrl+Shift+I` (`Cmd+Shift+I` on macOS)
 
 DevTools require the NW.js SDK build, which windowd installs by default.
+
+## Debugging for agents
+
+If you are an agent and you are trying to debug a flaky app/test, run with artifacts enabled first.
+
+```bash
+# From a project root
+npx windowd --artifacts .windowd/debug
+```
+
+This writes:
+
+- `.windowd/debug/cli.log` - everything from the CLI + child processes (Vite/NW stderr/stdout)
+- `.windowd/debug/app.log` - console output from inside the app window (`console.log`, `console.error`, uncaught errors, unhandled rejections)
+
+`app.log` is captured via NW.js `inject_js_start` so it hooks console before your app scripts run.
+When `--artifacts` is enabled, any custom `nw.manifest.inject_js_start` is temporarily overridden by windowd's logger preload.
+
+For E2E style debugging (capture screenshot and exit):
+
+```bash
+npx windowd --capture .windowd/run1 --artifacts .windowd/run1
+```
+
+This also writes:
+
+- `.windowd/run1/screenshot.png`
+- `.windowd/run1/result.json`
+
+If something fails, inspect `cli.log` first, then `app.log`, then check the screenshot.
 
 ## Requirements
 
