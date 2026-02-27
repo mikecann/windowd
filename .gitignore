@@ -12,3 +12,4 @@ worker.log
 screenshot*.png
 screenshot*.ps1
 test-webview.cjs
+.env
